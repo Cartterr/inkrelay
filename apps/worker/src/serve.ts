@@ -64,7 +64,6 @@ if (config.kindleDelivery) {
       {
         ...DEFAULT_JOB_OPTIONS,
         retryLimit: 3,
-        singletonKey: `delivery:${editionId}`,
       },
     );
   }

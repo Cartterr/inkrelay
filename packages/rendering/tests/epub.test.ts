@@ -1,14 +1,16 @@
 import { unzipSync } from "fflate";
+import sharp from "sharp";
 import { beforeAll, describe, expect, test } from "vitest";
 
 import { renderMonochromeCover } from "../src/cover.js";
-import { renderWeeklyEpub, type WeeklyEpubEntry } from "../src/epub.js";
+import { renderArticleEpub, renderWeeklyEpub, type WeeklyEpubEntry } from "../src/epub.js";
 
 const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
 let coverPng: Buffer;
+let inlineJpeg: Buffer;
 
 beforeAll(async () => {
   coverPng = await renderMonochromeCover({
@@ -17,6 +19,12 @@ beforeAll(async () => {
     category: "graphics",
     editionLabel: "INKRELAY / WEEK 33",
   });
+  inlineJpeg = await sharp({
+    create: { width: 800, height: 500, channels: 3, background: { r: 120, g: 120, b: 120 } },
+  })
+    .greyscale()
+    .jpeg()
+    .toBuffer();
 });
 
 function makeEntries(count = 10): WeeklyEpubEntry[] {
@@ -33,6 +41,43 @@ function makeEntries(count = 10): WeeklyEpubEntry[] {
 }
 
 describe("weekly EPUB", () => {
+  test("renders one self-contained Kindle document with embedded article images", async () => {
+    const entry = makeEntries(1)[0];
+    if (!entry) throw new Error("Expected article fixture");
+    const epub = await renderArticleEpub({
+      editionId: "2026-W33",
+      entry: {
+        ...entry,
+        contentHtml:
+          '<p>Before diagram.</p><figure><img src="https://source.example/diagram.png" alt="Pipeline diagram"><figcaption>Pipeline stages</figcaption></figure><p>After diagram.</p><img src="https://source.example/unavailable.png">',
+        inlineImages: [
+          {
+            sourceUrl: "https://source.example/diagram.png",
+            bytes: inlineJpeg,
+            mediaType: "image/jpeg",
+            width: 800,
+            height: 500,
+            alt: "Pipeline diagram",
+          },
+        ],
+      },
+    });
+
+    const files = unzipSync(epub);
+    const text = (path: string) => new TextDecoder().decode(files[path]);
+    const article = text("OEBPS/article-01.xhtml");
+    expect(Object.keys(files).filter((path) => /article-\d{2}\.xhtml$/u.test(path))).toHaveLength(
+      1,
+    );
+    expect(Buffer.from(files["OEBPS/images/article-01-inline-01.jpg"] ?? [])).toEqual(inlineJpeg);
+    expect(text("OEBPS/content.opf")).toContain(
+      'href="images/article-01-inline-01.jpg" media-type="image/jpeg"',
+    );
+    expect(article).toContain('src="images/article-01-inline-01.jpg"');
+    expect(article).toContain("Pipeline stages");
+    expect(article).not.toContain("unavailable.png");
+  });
+
   test("embeds a declared Kindle cover and exactly ten covered articles", async () => {
     const epub = await renderWeeklyEpub({
       editionId: "2026-W33",

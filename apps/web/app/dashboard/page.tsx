@@ -61,8 +61,8 @@ export default async function DashboardPage() {
           <p className="eyebrow">Access control</p>
           <h2>Private publication access</h2>
           <p>
-            Direct Kindle delivery is primary. Protected feeds remain available as a reversible
-            compatibility path.
+            Direct Kindle delivery sends one image-rich EPUB per selected article. Protected feeds
+            and the combined EPUB remain available as reversible compatibility paths.
           </p>
         </div>
         <RotateFeedKey />

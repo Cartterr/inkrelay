@@ -19,6 +19,7 @@ describe("migration bundle", () => {
     expect(journal.entries.map(({ idx, tag }) => ({ idx, tag }))).toEqual([
       { idx: 0, tag: "0000_initial" },
       { idx: 1, tag: "0001_direct_kindle_delivery" },
+      { idx: 2, tag: "0002_split_kindle_documents" },
     ]);
 
     await Promise.all(

@@ -19,6 +19,7 @@ import {
   articles,
   auditEvents,
   covers,
+  editionDocumentDeliveries,
   editionDeliveries,
   evaluations,
   feedCursors,
@@ -27,6 +28,9 @@ import {
   weeklySelections,
   workerHeartbeats,
 } from "./schema.js";
+
+export const CURRENT_KINDLE_DELIVERY_FORMAT = "per-article-v1";
+const DELIVERY_LEASE_MS = 15 * 60 * 1_000;
 
 export interface PublicationSelection {
   articleId: string;
@@ -364,25 +368,37 @@ export async function claimEditionDelivery(
   return connection.db.transaction(async (transaction) => {
     await transaction
       .insert(editionDeliveries)
-      .values({ editionId, status: "pending" })
+      .values({ editionId, status: "pending", deliveryFormat: CURRENT_KINDLE_DELIVERY_FORMAT })
       .onConflictDoNothing();
     await transaction.execute(
       sql`select edition_id from edition_deliveries where edition_id = ${editionId} for update`,
     );
     const rows = await transaction
-      .select({ status: editionDeliveries.status })
+      .select({
+        status: editionDeliveries.status,
+        deliveryFormat: editionDeliveries.deliveryFormat,
+        sendingStartedAt: editionDeliveries.sendingStartedAt,
+      })
       .from(editionDeliveries)
       .where(eq(editionDeliveries.editionId, editionId))
       .limit(1);
     const current = rows[0];
     if (!current) throw new Error("Edition delivery record could not be created");
-    if (current.status === "delivered" || current.status === "sending") {
+    const currentLeaseIsFresh =
+      current.status === "sending" &&
+      current.sendingStartedAt &&
+      Date.now() - current.sendingStartedAt.valueOf() < DELIVERY_LEASE_MS;
+    if (
+      current.deliveryFormat === CURRENT_KINDLE_DELIVERY_FORMAT &&
+      (current.status === "delivered" || currentLeaseIsFresh)
+    ) {
       return { claimed: false, status: current.status };
     }
     await transaction
       .update(editionDeliveries)
       .set({
         status: "sending",
+        deliveryFormat: CURRENT_KINDLE_DELIVERY_FORMAT,
         attemptCount: sql`${editionDeliveries.attemptCount} + 1`,
         sendingStartedAt: new Date(),
         lastErrorCode: null,
@@ -402,12 +418,102 @@ export async function markEditionDelivered(
     .update(editionDeliveries)
     .set({
       status: "delivered",
+      deliveryFormat: CURRENT_KINDLE_DELIVERY_FORMAT,
       providerMessageId,
       deliveredAt: new Date(),
       lastErrorCode: null,
       updatedAt: new Date(),
     })
     .where(eq(editionDeliveries.editionId, editionId));
+}
+
+export async function claimEditionDocumentDelivery(
+  connection: DatabaseConnection,
+  input: { editionId: string; articleId: string; rank: number },
+): Promise<{ claimed: boolean; status: "pending" | "sending" | "delivered" | "failed" }> {
+  return connection.db.transaction(async (transaction) => {
+    await transaction
+      .insert(editionDocumentDeliveries)
+      .values({ ...input, status: "pending" })
+      .onConflictDoNothing();
+    await transaction.execute(
+      sql`select edition_id from edition_document_deliveries where edition_id = ${input.editionId} and article_id = ${input.articleId} for update`,
+    );
+    const rows = await transaction
+      .select({
+        status: editionDocumentDeliveries.status,
+        sendingStartedAt: editionDocumentDeliveries.sendingStartedAt,
+      })
+      .from(editionDocumentDeliveries)
+      .where(
+        and(
+          eq(editionDocumentDeliveries.editionId, input.editionId),
+          eq(editionDocumentDeliveries.articleId, input.articleId),
+        ),
+      )
+      .limit(1);
+    const current = rows[0];
+    if (!current) throw new Error("Document delivery record could not be created");
+    const leaseIsFresh =
+      current.status === "sending" &&
+      current.sendingStartedAt &&
+      Date.now() - current.sendingStartedAt.valueOf() < DELIVERY_LEASE_MS;
+    if (current.status === "delivered" || leaseIsFresh) {
+      return { claimed: false, status: current.status };
+    }
+    await transaction
+      .update(editionDocumentDeliveries)
+      .set({
+        status: "sending",
+        attemptCount: sql`${editionDocumentDeliveries.attemptCount} + 1`,
+        sendingStartedAt: new Date(),
+        lastErrorCode: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(editionDocumentDeliveries.editionId, input.editionId),
+          eq(editionDocumentDeliveries.articleId, input.articleId),
+        ),
+      );
+    return { claimed: true, status: current.status };
+  });
+}
+
+export async function markEditionDocumentDelivered(
+  connection: DatabaseConnection,
+  input: { editionId: string; articleId: string; providerMessageId: string | null },
+): Promise<void> {
+  await connection.db
+    .update(editionDocumentDeliveries)
+    .set({
+      status: "delivered",
+      providerMessageId: input.providerMessageId,
+      deliveredAt: new Date(),
+      lastErrorCode: null,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(editionDocumentDeliveries.editionId, input.editionId),
+        eq(editionDocumentDeliveries.articleId, input.articleId),
+      ),
+    );
+}
+
+export async function markEditionDocumentDeliveryFailed(
+  connection: DatabaseConnection,
+  input: { editionId: string; articleId: string; errorCode: string },
+): Promise<void> {
+  await connection.db
+    .update(editionDocumentDeliveries)
+    .set({ status: "failed", lastErrorCode: input.errorCode.slice(0, 120), updatedAt: new Date() })
+    .where(
+      and(
+        eq(editionDocumentDeliveries.editionId, input.editionId),
+        eq(editionDocumentDeliveries.articleId, input.articleId),
+      ),
+    );
 }
 
 export async function markEditionDeliveryFailed(

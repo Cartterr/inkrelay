@@ -1,22 +1,23 @@
 # InkRelay
 
-InkRelay is a private reading pipeline for Kindle. It curates a fixed set of trusted technical feeds, produces high-contrast monochrome editorial covers, builds a self-contained weekly EPUB, and delivers it directly to Amazon Send to Kindle through Amazon SES.
+InkRelay is a private reading pipeline for Kindle. It curates a fixed set of trusted technical feeds, produces high-contrast monochrome editorial covers, builds one self-contained EPUB per selected article, and delivers those documents directly to Amazon Send to Kindle through Amazon SES.
 
 ## Product guarantees
 
 - Exactly 58 approved sources are registered.
 - Exactly 10 distinct-source articles are selected for each published weekly edition.
 - Each edition is available as a self-contained EPUB with a declared 1200×1600 Kindle cover.
-- Each published edition is sent once through a durable, auditable, duplicate-resistant delivery job.
+- Each published edition sends ten separately readable documents through a durable, resumable delivery job.
+- Relevant article images are downloaded through SSRF-safe networking, converted to compact grayscale JPEGs, and embedded for offline Kindle reading.
 - Extracted pages are sanitized, attributed, non-indexed, and retained for 90 days.
 - Secrets belong in Railway or local environment variables, never in Git.
 - The service remains useful without an AI provider through deterministic scoring and cover fallbacks.
 
 ## Direct Kindle delivery
 
-The persistent worker sends the cover-guaranteed EPUB from a verified Amazon SES sender to the account's existing `@kindle.com` document address. The sender must also be present in Amazon's Approved Personal Document Email List. Delivery credentials use dedicated `SES_*` variables and never reuse Railway Bucket credentials. A PostgreSQL delivery record prevents repeat sends after success and fails closed if the provider accepted a message but its acknowledgement could not be persisted.
+The persistent worker sends ten cover-guaranteed EPUBs from a verified Amazon SES sender to the account's existing `@kindle.com` document address. Each selected source/article becomes a separate Kindle library item. The sender must also be present in Amazon's Approved Personal Document Email List. Delivery credentials use dedicated `SES_*` variables and never reuse Railway Bucket credentials. PostgreSQL tracks each document independently, so retries continue past failures and do not resend documents already acknowledged by the provider.
 
-Protected feeds and `GET /f/:feedKey/weekly.epub` remain available as reversible compatibility and diagnostic paths. KTool is no longer required for the primary weekly delivery.
+Protected feeds, `GET /f/:feedKey/weekly.epub`, and `GET /f/:feedKey/document/:rank` remain available as reversible compatibility and diagnostic paths. The document route returns one of the ten selected image-rich EPUBs. KTool is no longer required for the primary weekly delivery.
 
 ## Repository layout
 

@@ -16,11 +16,14 @@ import {
 } from "@inkrelay/core";
 import {
   articleForWork,
+  claimEditionDocumentDelivery,
   claimEditionDelivery,
   completeRetentionCleanup,
   expiredAssets,
   failEdition,
   markEditionDelivered,
+  markEditionDocumentDelivered,
+  markEditionDocumentDeliveryFailed,
   markEditionDeliveryFailed,
   markExtractionFailed,
   parseJobPayload,
@@ -38,8 +41,9 @@ import {
 } from "@inkrelay/db";
 import {
   COVER_RENDERER_VERSION,
+  prepareArticleImages,
+  renderArticleEpub,
   renderMonochromeCover,
-  renderWeeklyEpub,
   type AssetStore,
   type WeeklyEpubEntry,
 } from "@inkrelay/rendering";
@@ -321,7 +325,6 @@ async function handlePublication(
       {
         ...DEFAULT_JOB_OPTIONS,
         retryLimit: 3,
-        singletonKey: `delivery:${payload.editionId}`,
       },
     );
   }
@@ -347,54 +350,118 @@ async function handleDelivery(
     return;
   }
 
-  let result: { messageId: string | null };
-  try {
-    const epub = await renderEditionEpub(dependencies, payload.editionId);
-    result = await dependencies.kindleProvider.send({ editionId: payload.editionId, epub });
-  } catch (error) {
-    await markEditionDeliveryFailed(dependencies.connection, payload.editionId, errorCode(error));
-    throw error;
+  const rows = await weeklyEntriesByEdition(dependencies.connection, payload.editionId);
+  if (rows.length !== 10) {
+    await markEditionDeliveryFailed(
+      dependencies.connection,
+      payload.editionId,
+      "edition_requires_ten_documents",
+    );
+    throw new Error("Kindle delivery requires exactly ten selected articles");
   }
 
-  await markEditionDelivered(dependencies.connection, payload.editionId, result.messageId);
+  const failures: string[] = [];
+  let deliveredCount = 0;
+  let embeddedImageCount = 0;
+  for (const [index, row] of rows.entries()) {
+    const rank = row.rank ?? index + 1;
+    const documentClaim = await claimEditionDocumentDelivery(dependencies.connection, {
+      editionId: payload.editionId,
+      articleId: row.articleId,
+      rank,
+    });
+    if (!documentClaim.claimed) {
+      if (documentClaim.status === "delivered") deliveredCount += 1;
+      else failures.push("document_delivery_in_progress");
+      continue;
+    }
+    try {
+      const document = await renderArticleDocument(dependencies, row, payload.editionId);
+      embeddedImageCount += document.embeddedImageCount;
+      const result = await dependencies.kindleProvider.send({
+        editionId: payload.editionId,
+        articleId: row.articleId,
+        rank,
+        title: row.title,
+        sourceName: row.sourceName,
+        epub: document.epub,
+      });
+      await markEditionDocumentDelivered(dependencies.connection, {
+        editionId: payload.editionId,
+        articleId: row.articleId,
+        providerMessageId: result.messageId,
+      });
+      deliveredCount += 1;
+    } catch (error) {
+      const code = errorCode(error);
+      failures.push(code);
+      await markEditionDocumentDeliveryFailed(dependencies.connection, {
+        editionId: payload.editionId,
+        articleId: row.articleId,
+        errorCode: code,
+      });
+      dependencies.logger.warn(
+        { articleHash: hashIdentifier(row.articleId), errorCode: code },
+        "kindle.document_failed",
+      );
+    }
+  }
+
+  if (failures.length > 0 || deliveredCount !== 10) {
+    const failureCode = `document_delivery_failed_${failures.length || 10 - deliveredCount}`;
+    await markEditionDeliveryFailed(dependencies.connection, payload.editionId, failureCode);
+    throw new Error(failureCode);
+  }
+
+  await markEditionDelivered(dependencies.connection, payload.editionId, null);
   dependencies.logger.info(
     {
       editionHash: hashIdentifier(payload.editionId),
       recipientHash: hashIdentifier(dependencies.config.kindleDelivery.destinationEmail),
+      documentCount: deliveredCount,
+      embeddedImageCount,
     },
     "kindle.delivered",
   );
 }
 
-async function renderEditionEpub(
+async function renderArticleDocument(
   dependencies: WorkerDependencies,
+  row: Awaited<ReturnType<typeof weeklyEntriesByEdition>>[number],
   editionId: string,
-): Promise<Buffer> {
-  const rows = await weeklyEntriesByEdition(dependencies.connection, editionId);
-  const entries: WeeklyEpubEntry[] = [];
-  for (const row of rows) {
-    const cover = await dependencies.store.get(row.storageKey);
-    if (cover?.contentType !== "image/png") {
-      throw new Error("Edition cover is unavailable");
-    }
-    entries.push({
-      articleId: row.articleId,
-      title: row.title,
-      sourceName: row.sourceName,
-      summary: row.summary ?? "A carefully selected technical article.",
-      contentHtml: row.contentHtml ?? "",
-      originalUrl: row.originalUrl,
-      publishedAt: row.publishedAt?.toISOString() ?? new Date(0).toISOString(),
-      coverPng: cover.body,
-    });
+): Promise<{ epub: Buffer; embeddedImageCount: number }> {
+  const cover = await dependencies.store.get(row.storageKey);
+  if (cover?.contentType !== "image/png") {
+    throw new Error("Edition cover is unavailable");
   }
-  const publishedAt = rows[0]?.publishedAt?.toISOString() ?? new Date(0).toISOString();
-  return renderWeeklyEpub({
+  if (!row.contentHtml?.trim()) throw new Error("Edition article content is unavailable");
+  const prepared = await prepareArticleImages(row.contentHtml, row.originalUrl);
+  dependencies.logger.info(
+    {
+      articleHash: hashIdentifier(row.articleId),
+      discoveredImageCount: prepared.discoveredCount,
+      embeddedImageCount: prepared.images.length,
+      failedImageCount: prepared.failedCount,
+      skippedImageCount: prepared.skippedCount,
+    },
+    "kindle.article_images_prepared",
+  );
+  const entry: WeeklyEpubEntry = {
+    articleId: row.articleId,
+    title: row.title,
+    sourceName: row.sourceName,
+    summary: row.summary ?? "A carefully selected technical article.",
+    contentHtml: row.contentHtml,
+    originalUrl: row.originalUrl,
+    publishedAt: row.publishedAt?.toISOString() ?? new Date(0).toISOString(),
+    coverPng: cover.body,
+    inlineImages: prepared.images,
+  };
+  const epub = await renderArticleEpub({
     editionId,
-    title: `InkRelay Weekly - ${editionId}`,
-    publishedAt,
-    entries,
+    entry,
   });
+  return { epub, embeddedImageCount: prepared.images.length };
 }
 
 async function handleCleanup(dependencies: WorkerDependencies): Promise<void> {
