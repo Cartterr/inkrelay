@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 
-import { publicAssetUrl } from "../lib/article-metadata";
+import { publicInlineAssetUrl } from "../lib/article-metadata";
 
 test("keeps the editorial cover inside the content node KTool converts", async () => {
   const module = await import("../components/extractable-article-body").catch(() => ({
@@ -41,7 +41,7 @@ test("survives the Mozilla Readability pass KTool applies", async () => {
   const markup = renderToStaticMarkup(
     createElement(ExtractableArticleBody, {
       articleHtml,
-      coverUrl: publicAssetUrl("opaque-cover", "https://inkrelay.example/"),
+      coverUrl: publicInlineAssetUrl("opaque-cover", "https://inkrelay.example/"),
       title: "Rendering digital humans",
     }),
   );
@@ -55,8 +55,8 @@ test("survives the Mozilla Readability pass KTool applies", async () => {
   const parsed = new Readability(dom.window.document).parse();
   const content = parsed?.content ?? "";
 
-  expect(content).toContain("https://inkrelay.example/assets/opaque-cover");
-  expect(content.indexOf("https://inkrelay.example/assets/opaque-cover")).toBeLessThan(
-    content.indexOf(opening),
-  );
+  expect(content).toContain("https://inkrelay.example/assets/opaque-cover?placement=article");
+  expect(
+    content.indexOf("https://inkrelay.example/assets/opaque-cover?placement=article"),
+  ).toBeLessThan(content.indexOf(opening));
 });
