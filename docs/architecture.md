@@ -8,7 +8,8 @@
                                           |-> cover rendering -> private bucket
                                           `-> weekly selection -> PostgreSQL
 
-KTool -> protected proxy feed -> protected article page -> protected cover asset
+KTool RSS -> protected proxy feed -> protected article page -> protected cover asset
+KTool document upload -> protected weekly EPUB -> embedded declared cover + ten articles
 Admin -> GitHub OAuth dashboard -> overrides, retries, previews, health
 ```
 

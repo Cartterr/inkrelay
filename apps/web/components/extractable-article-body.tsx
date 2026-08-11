@@ -1,17 +1,14 @@
 export function ExtractableArticleBody({
   articleHtml,
   coverUrl,
-  heroCoverUrl,
   title,
 }: {
   articleHtml: string;
   coverUrl: string;
-  heroCoverUrl: string;
   title: string;
 }) {
   const coverLabel = `Editorial cover for ${title}`;
   const coverMarkup = [
-    `<img class="reader-cover-sentinel" src="${escapeHtml(heroCoverUrl)}" alt="" width="1200" height="1600" aria-hidden="true">`,
     '<figure class="reader-cover-figure">',
     `<img class="reader-cover" src="${escapeHtml(coverUrl)}" alt="${escapeHtml(coverLabel)}" width="1200" height="1600">`,
     `<figcaption class="reader-cover-caption">${escapeHtml(coverLabel)}</figcaption>`,

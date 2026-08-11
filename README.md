@@ -6,6 +6,7 @@ InkRelay is a private RSS-to-Kindle enrichment system. It curates a fixed set of
 
 - Exactly 58 approved sources are registered.
 - Exactly 10 distinct-source articles are selected for each published weekly edition.
+- Each edition is available as a self-contained EPUB with a declared 1200×1600 Kindle cover.
 - Extracted pages are sanitized, attributed, non-indexed, and retained for 90 days.
 - Secrets belong in Railway or local environment variables, never in Git.
 - The service remains useful without an AI provider through deterministic scoring and cover fallbacks.
@@ -16,7 +17,7 @@ InkRelay is a private RSS-to-Kindle enrichment system. It curates a fixed set of
 - `apps/worker` — ingestion, extraction, evaluation, publishing, and scheduled jobs.
 - `packages/core` — source registry and domain behavior.
 - `packages/db` — PostgreSQL schema, migrations, repositories, and durable jobs.
-- `packages/rendering` — monochrome cover generation and asset storage contracts.
+- `packages/rendering` — monochrome cover generation, standards-compliant EPUBs, and asset storage.
 - `docs` — architecture, operations, security, and implementation plans.
 
 ## Local development
