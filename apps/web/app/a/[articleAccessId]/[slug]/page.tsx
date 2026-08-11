@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
-import Image from "next/image";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 
@@ -13,6 +12,7 @@ import {
 } from "@/lib/article-metadata";
 import { buildArticleRequestLog } from "@/lib/article-request-log";
 import { database, runtimeConfig } from "@/lib/runtime";
+import { ExtractableArticleBody } from "@/components/extractable-article-body";
 
 export const dynamic = "force-dynamic";
 
@@ -59,16 +59,6 @@ export default async function ArticlePage({
             __html: JSON.stringify(structuredData).replace(/</gu, "\\u003c"),
           }}
         />
-        {/* The opaque asset ID is independent from the article and feed access identifiers. */}
-        <Image
-          className="reader-cover"
-          src={`/assets/${encodeURIComponent(record.cover.assetAccessId)}`}
-          alt={`Editorial cover for ${record.article.title}`}
-          width={1200}
-          height={1600}
-          priority
-          unoptimized
-        />
         <header className="reader-header">
           <p className="eyebrow">{record.source.name}</p>
           <h1>{record.article.title}</h1>
@@ -80,11 +70,10 @@ export default async function ArticlePage({
             <p className="reader-summary">{record.article.summary}</p>
           ) : null}
         </header>
-        <div
-          className="reader-body"
-          // This HTML passed Mozilla Readability and InkRelay's strict sanitize-html allowlist.
-          // biome-ignore lint/security/noDangerouslySetInnerHtml: Rendering the already-sanitized article body is the purpose of this route.
-          dangerouslySetInnerHTML={{ __html: record.article.contentHtml }}
+        <ExtractableArticleBody
+          articleHtml={record.article.contentHtml}
+          assetAccessId={record.cover.assetAccessId}
+          title={record.article.title}
         />
         <footer className="reader-attribution">
           Originally published by {record.source.name}.{" "}
