@@ -431,6 +431,9 @@ p.inline-error {
   display: block;
   filter: grayscale(1);
 }
+.reader-cover-sentinel {
+  display: none;
+}
 .reader-article-content {
   --reader-gutter: clamp(24px, 8vw, 86px);
 }
