@@ -432,7 +432,7 @@ p.inline-error {
   filter: grayscale(1);
 }
 .reader-header,
-.reader-body,
+.reader-content,
 .reader-attribution {
   padding-left: clamp(24px, 8vw, 86px);
   padding-right: clamp(24px, 8vw, 86px);
