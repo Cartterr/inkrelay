@@ -1,6 +1,6 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
-import { coverUpgradeArticleIds } from "../src/cover-upgrade.js";
+import { coverUpgradeArticleIds, enqueueCoverUpgradeJobs } from "../src/cover-upgrade.js";
 
 describe("cover renderer upgrades", () => {
   test("queues each legacy cover once and skips current renderer output", () => {
@@ -13,5 +13,13 @@ describe("cover renderer upgrades", () => {
         { articleId: "article-4", coverGenerationSource: null },
       ]),
     ).toEqual(["article-1", "article-4"]);
+  });
+
+  test("requeues legacy covers without stale singleton suppression", async () => {
+    const send = vi.fn().mockResolvedValueOnce("job-1").mockResolvedValueOnce("job-2");
+
+    await expect(enqueueCoverUpgradeJobs({ send }, ["article-1", "article-2"])).resolves.toBe(2);
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[0]?.[2]).not.toHaveProperty("singletonKey");
   });
 });
