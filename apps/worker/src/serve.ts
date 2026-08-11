@@ -5,6 +5,7 @@ import {
   closeDatabase,
   createDatabase,
   heartbeat,
+  latestPublishedEditionId,
   migrateDatabase,
   seedSourceRegistry,
 } from "@inkrelay/db";
@@ -13,8 +14,9 @@ import { S3AssetStore } from "@inkrelay/rendering";
 import { PgBoss } from "pg-boss";
 
 import { createAiProvider, registerHandlers } from "./handlers.js";
+import { SesKindleDeliveryProvider } from "./kindle.js";
 import { createLogger } from "./logging.js";
-import { ensureQueues } from "./queue.js";
+import { DEFAULT_JOB_OPTIONS, ensureQueues } from "./queue.js";
 
 const config = parseRuntimeConfig(process.env);
 const logger = createLogger(config.logLevel);
@@ -41,8 +43,26 @@ await registerHandlers({
   config,
   store,
   provider: createAiProvider(config),
+  kindleProvider: config.kindleDelivery
+    ? new SesKindleDeliveryProvider(config.kindleDelivery)
+    : null,
   logger,
 });
+
+if (config.kindleDelivery) {
+  const editionId = await latestPublishedEditionId(connection);
+  if (editionId) {
+    await boss.send(
+      "deliver-edition",
+      { editionId },
+      {
+        ...DEFAULT_JOB_OPTIONS,
+        retryLimit: 3,
+        singletonKey: `delivery:${editionId}`,
+      },
+    );
+  }
+}
 
 const workerId = process.env.RAILWAY_REPLICA_ID ?? randomUUID();
 const serviceVersion = process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 12) ?? "local";

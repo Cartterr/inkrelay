@@ -10,6 +10,7 @@ describe("durable job contracts", () => {
       "evaluate-article",
       "generate-cover",
       "publish-edition",
+      "deliver-edition",
       "cleanup-retention",
     ]);
   });
@@ -20,6 +21,9 @@ describe("durable job contracts", () => {
     });
     expect(() => parseJobPayload("poll-source", { sourceId: "" })).toThrow();
     expect(() => parseJobPayload("publish-edition", { editionId: "" })).toThrow();
+    expect(parseJobPayload("deliver-edition", { editionId: "2026-W33" })).toEqual({
+      editionId: "2026-W33",
+    });
   });
 
   test("expires article bodies and generated assets after 90 days", () => {

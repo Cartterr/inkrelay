@@ -19,6 +19,7 @@ import {
   articles,
   auditEvents,
   covers,
+  editionDeliveries,
   evaluations,
   feedCursors,
   sources,
@@ -356,6 +357,82 @@ export async function failEdition(
     });
 }
 
+export async function claimEditionDelivery(
+  connection: DatabaseConnection,
+  editionId: string,
+): Promise<{ claimed: boolean; status: "pending" | "sending" | "delivered" | "failed" }> {
+  return connection.db.transaction(async (transaction) => {
+    await transaction
+      .insert(editionDeliveries)
+      .values({ editionId, status: "pending" })
+      .onConflictDoNothing();
+    await transaction.execute(
+      sql`select edition_id from edition_deliveries where edition_id = ${editionId} for update`,
+    );
+    const rows = await transaction
+      .select({ status: editionDeliveries.status })
+      .from(editionDeliveries)
+      .where(eq(editionDeliveries.editionId, editionId))
+      .limit(1);
+    const current = rows[0];
+    if (!current) throw new Error("Edition delivery record could not be created");
+    if (current.status === "delivered" || current.status === "sending") {
+      return { claimed: false, status: current.status };
+    }
+    await transaction
+      .update(editionDeliveries)
+      .set({
+        status: "sending",
+        attemptCount: sql`${editionDeliveries.attemptCount} + 1`,
+        sendingStartedAt: new Date(),
+        lastErrorCode: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(editionDeliveries.editionId, editionId));
+    return { claimed: true, status: current.status };
+  });
+}
+
+export async function markEditionDelivered(
+  connection: DatabaseConnection,
+  editionId: string,
+  providerMessageId: string | null,
+): Promise<void> {
+  await connection.db
+    .update(editionDeliveries)
+    .set({
+      status: "delivered",
+      providerMessageId,
+      deliveredAt: new Date(),
+      lastErrorCode: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(editionDeliveries.editionId, editionId));
+}
+
+export async function markEditionDeliveryFailed(
+  connection: DatabaseConnection,
+  editionId: string,
+  errorCode: string,
+): Promise<void> {
+  await connection.db
+    .update(editionDeliveries)
+    .set({ status: "failed", lastErrorCode: errorCode.slice(0, 120), updatedAt: new Date() })
+    .where(eq(editionDeliveries.editionId, editionId));
+}
+
+export async function latestPublishedEditionId(
+  connection: DatabaseConnection,
+): Promise<string | null> {
+  const rows = await connection.db
+    .select({ id: weeklyEditions.id })
+    .from(weeklyEditions)
+    .where(eq(weeklyEditions.status, "published"))
+    .orderBy(desc(weeklyEditions.publishedAt))
+    .limit(1);
+  return rows[0]?.id ?? null;
+}
+
 export async function setArticleOverride(
   connection: DatabaseConnection,
   articleId: string,
@@ -515,13 +592,12 @@ export async function publishedEntriesForSource(
 }
 
 export async function latestWeeklyEntries(connection: DatabaseConnection) {
-  const latest = await connection.db
-    .select({ id: weeklyEditions.id })
-    .from(weeklyEditions)
-    .where(eq(weeklyEditions.status, "published"))
-    .orderBy(desc(weeklyEditions.publishedAt))
-    .limit(1);
-  if (!latest[0]) return { editionId: null, entries: [] };
+  const editionId = await latestPublishedEditionId(connection);
+  if (!editionId) return { editionId: null, entries: [] };
+  return { editionId, entries: await weeklyEntriesByEdition(connection, editionId) };
+}
+
+export async function weeklyEntriesByEdition(connection: DatabaseConnection, editionId: string) {
   const rows = await connection.db
     .select({
       articleId: articles.id,
@@ -545,12 +621,9 @@ export async function latestWeeklyEntries(connection: DatabaseConnection) {
     .innerJoin(articles, eq(articles.id, weeklySelections.articleId))
     .innerJoin(sources, eq(sources.id, articles.sourceId))
     .innerJoin(covers, eq(covers.articleId, articles.id))
-    .where(eq(weeklySelections.editionId, latest[0].id))
+    .where(and(eq(weeklySelections.editionId, editionId), eq(weeklyEditions.status, "published")))
     .orderBy(weeklySelections.rank, desc(covers.createdAt));
-  return {
-    editionId: latest[0].id,
-    entries: uniquePublishedRows(rows).sort((left, right) => (left.rank ?? 0) - (right.rank ?? 0)),
-  };
+  return uniquePublishedRows(rows).sort((left, right) => (left.rank ?? 0) - (right.rank ?? 0));
 }
 
 export async function publishedArticleByAccessId(
@@ -607,7 +680,22 @@ export async function dashboardSnapshot(connection: DatabaseConnection) {
       .leftJoin(articleOverrides, eq(articleOverrides.articleId, articles.id))
       .orderBy(desc(articles.publishedAt))
       .limit(100),
-    connection.db.select().from(weeklyEditions).orderBy(desc(weeklyEditions.scheduledAt)).limit(12),
+    connection.db
+      .select({
+        id: weeklyEditions.id,
+        status: weeklyEditions.status,
+        scheduledAt: weeklyEditions.scheduledAt,
+        publishedAt: weeklyEditions.publishedAt,
+        failureReason: weeklyEditions.failureReason,
+        deliveryStatus: editionDeliveries.status,
+        deliveryAttempts: editionDeliveries.attemptCount,
+        deliveryErrorCode: editionDeliveries.lastErrorCode,
+        deliveredAt: editionDeliveries.deliveredAt,
+      })
+      .from(weeklyEditions)
+      .leftJoin(editionDeliveries, eq(editionDeliveries.editionId, weeklyEditions.id))
+      .orderBy(desc(weeklyEditions.scheduledAt))
+      .limit(12),
     connection.db
       .select()
       .from(workerHeartbeats)

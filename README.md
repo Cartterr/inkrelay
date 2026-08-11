@@ -1,19 +1,22 @@
 # InkRelay
 
-InkRelay is a private reading pipeline for Kindle. It curates a fixed set of trusted technical feeds, produces high-contrast monochrome editorial covers, and publishes protected feeds, readable article pages, and a self-contained weekly EPUB for delivery through KTool.
+InkRelay is a private reading pipeline for Kindle. It curates a fixed set of trusted technical feeds, produces high-contrast monochrome editorial covers, builds a self-contained weekly EPUB, and delivers it directly to Amazon Send to Kindle through Amazon SES.
 
 ## Product guarantees
 
 - Exactly 58 approved sources are registered.
 - Exactly 10 distinct-source articles are selected for each published weekly edition.
 - Each edition is available as a self-contained EPUB with a declared 1200×1600 Kindle cover.
+- Each published edition is sent once through a durable, auditable, duplicate-resistant delivery job.
 - Extracted pages are sanitized, attributed, non-indexed, and retained for 90 days.
 - Secrets belong in Railway or local environment variables, never in Git.
 - The service remains useful without an AI provider through deterministic scoring and cover fallbacks.
 
-## KTool delivery boundary
+## Direct Kindle delivery
 
-KTool's RSS and URL converter is a supported text-first compatibility path, but it does not reliably preserve a leading article image as the Kindle book cover. InkRelay therefore makes the cover-guaranteed edition available at `GET /f/:feedKey/weekly.epub`. That EPUB embeds all ten 1200×1600 grayscale covers, declares the first one as the publication cover in both EPUB 2 and EPUB 3 metadata, and stays below KTool's 20 MB document-upload limit. Use KTool's document upload for the weekly edition; do not subscribe to both the weekly proxy feed and upload the weekly EPUB, because that would duplicate delivery.
+The persistent worker sends the cover-guaranteed EPUB from a verified Amazon SES sender to the account's existing `@kindle.com` document address. The sender must also be present in Amazon's Approved Personal Document Email List. Delivery credentials use dedicated `SES_*` variables and never reuse Railway Bucket credentials. A PostgreSQL delivery record prevents repeat sends after success and fails closed if the provider accepted a message but its acknowledgement could not be persisted.
+
+Protected feeds and `GET /f/:feedKey/weekly.epub` remain available as reversible compatibility and diagnostic paths. KTool is no longer required for the primary weekly delivery.
 
 ## Repository layout
 
