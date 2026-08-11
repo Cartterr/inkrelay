@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { cache } from "react";
@@ -10,13 +11,18 @@ import {
   buildArticleStructuredData,
   type ArticleDiscoveryInput,
 } from "@/lib/article-metadata";
+import { buildArticleRequestLog } from "@/lib/article-request-log";
 import { database, runtimeConfig } from "@/lib/runtime";
 
 export const dynamic = "force-dynamic";
 
-const getPublishedArticle = cache((articleAccessId: string) =>
-  publishedArticleByAccessId(database(), articleAccessId),
-);
+const getPublishedArticle = cache(async (articleAccessId: string) => {
+  const requestHeaders = await headers();
+  console.info(
+    JSON.stringify(buildArticleRequestLog(articleAccessId, requestHeaders.get("user-agent"))),
+  );
+  return publishedArticleByAccessId(database(), articleAccessId);
+});
 
 export async function generateMetadata({
   params,
