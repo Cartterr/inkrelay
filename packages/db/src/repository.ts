@@ -197,7 +197,7 @@ export async function saveExtraction(
       canonicalUrl: extracted.canonicalUrl,
       contentFingerprint: extracted.contentFingerprint,
       imageUrl: extracted.imageUrl,
-      publishedAt: extracted.publishedAt ? new Date(extracted.publishedAt) : null,
+      publishedAt: extractionPublishedAtUpdate(extracted.publishedAt),
       contentHtml: extracted.contentHtml,
       textContent: extracted.textContent,
       wordCount: extracted.wordCount,
@@ -208,6 +208,12 @@ export async function saveExtraction(
       updatedAt: new Date(),
     })
     .where(eq(articles.id, articleId));
+}
+
+export function extractionPublishedAtUpdate(
+  extractedPublishedAt: string | null | undefined,
+): Date | undefined {
+  return extractedPublishedAt ? new Date(extractedPublishedAt) : undefined;
 }
 
 export async function markExtractionFailed(

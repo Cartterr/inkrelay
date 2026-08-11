@@ -1,6 +1,19 @@
 import { describe, expect, test } from "vitest";
 
-import { assertPublicationSet } from "../src/repository.js";
+import { assertPublicationSet, extractionPublishedAtUpdate } from "../src/repository.js";
+
+describe("extraction metadata updates", () => {
+  test("preserves the feed publication date when page metadata omits it", () => {
+    expect(extractionPublishedAtUpdate(null)).toBeUndefined();
+    expect(extractionPublishedAtUpdate(undefined)).toBeUndefined();
+  });
+
+  test("uses a valid publication date discovered on the article page", () => {
+    expect(extractionPublishedAtUpdate("2026-08-11T12:00:00.000Z")).toEqual(
+      new Date("2026-08-11T12:00:00.000Z"),
+    );
+  });
+});
 
 describe("atomic publication guard", () => {
   test("accepts exactly ten distinct articles and sources", () => {
