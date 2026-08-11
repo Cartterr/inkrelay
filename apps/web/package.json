@@ -22,7 +22,10 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@mozilla/readability": "^0.6.0",
+    "@types/jsdom": "^21.1.7",
     "@types/react": "^19.2.0",
-    "@types/react-dom": "^19.2.0"
+    "@types/react-dom": "^19.2.0",
+    "jsdom": "^26.1.0"
   }
 }
