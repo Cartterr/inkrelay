@@ -18,7 +18,7 @@ export function buildArticleMetadata(
     publicBaseUrl,
     `/a/${encodeURIComponent(article.articleAccessId)}/${encodeURIComponent(article.stableSlug)}`,
   );
-  const coverUrl = publicUrl(publicBaseUrl, `/assets/${encodeURIComponent(article.assetAccessId)}`);
+  const coverUrl = publicAssetUrl(article.assetAccessId, publicBaseUrl);
   const coverAlt = `Editorial cover for ${article.title}`;
 
   return {
@@ -50,7 +50,7 @@ export function buildArticleStructuredData(article: ArticleDiscoveryInput, publi
     publicBaseUrl,
     `/a/${encodeURIComponent(article.articleAccessId)}/${encodeURIComponent(article.stableSlug)}`,
   );
-  const coverUrl = publicUrl(publicBaseUrl, `/assets/${encodeURIComponent(article.assetAccessId)}`);
+  const coverUrl = publicAssetUrl(article.assetAccessId, publicBaseUrl);
 
   return {
     "@context": "https://schema.org",
@@ -63,6 +63,10 @@ export function buildArticleStructuredData(article: ArticleDiscoveryInput, publi
     author: { "@type": "Organization", name: article.sourceName },
     publisher: { "@type": "Organization", name: "InkRelay" },
   };
+}
+
+export function publicAssetUrl(assetAccessId: string, publicBaseUrl: string): string {
+  return publicUrl(publicBaseUrl, `/assets/${encodeURIComponent(assetAccessId)}`);
 }
 
 function publicUrl(baseUrl: string, pathname: string): string {

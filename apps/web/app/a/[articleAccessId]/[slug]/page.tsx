@@ -8,6 +8,7 @@ import { publishedArticleByAccessId } from "@inkrelay/db";
 import {
   buildArticleMetadata,
   buildArticleStructuredData,
+  publicAssetUrl,
   type ArticleDiscoveryInput,
 } from "@/lib/article-metadata";
 import { buildArticleRequestLog } from "@/lib/article-request-log";
@@ -46,10 +47,7 @@ export default async function ArticlePage({
   const published = record.article.publishedAt ?? record.article.createdAt;
   const publicBaseUrl = runtimeConfig().publicBaseUrl;
   const structuredData = buildArticleStructuredData(discoveryInput(record), publicBaseUrl);
-  const coverUrl = new URL(
-    `/assets/${encodeURIComponent(record.cover.assetAccessId)}`,
-    `${publicBaseUrl.replace(/\/$/u, "")}/`,
-  ).toString();
+  const coverUrl = publicAssetUrl(record.cover.assetAccessId, publicBaseUrl);
 
   return (
     <main className="reader-shell">

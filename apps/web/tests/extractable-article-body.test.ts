@@ -4,6 +4,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 
+import { publicAssetUrl } from "../lib/article-metadata";
+
 test("keeps the editorial cover inside the content node KTool converts", async () => {
   const module = await import("../components/extractable-article-body").catch(() => ({
     ExtractableArticleBody: undefined,
@@ -39,7 +41,7 @@ test("survives the Mozilla Readability pass KTool applies", async () => {
   const markup = renderToStaticMarkup(
     createElement(ExtractableArticleBody, {
       articleHtml,
-      coverUrl: "https://inkrelay.example/assets/opaque-cover",
+      coverUrl: publicAssetUrl("opaque-cover", "https://inkrelay.example/"),
       title: "Rendering digital humans",
     }),
   );
