@@ -1,11 +1,12 @@
 import { strToU8, zipSync, type Zippable } from "fflate";
+import { JSDOM } from "jsdom";
 
 export interface WeeklyEpubEntry {
   articleId: string;
   title: string;
   sourceName: string;
   summary: string;
-  textContent: string;
+  contentHtml: string;
   originalUrl: string;
   publishedAt: string;
   coverPng: Buffer;
@@ -19,6 +20,12 @@ export interface WeeklyEpubInput {
 }
 
 const ZIP_EPOCH = new Date("2000-01-01T00:00:00.000Z");
+export const MAX_KTOOL_EPUB_BYTES = 20 * 1024 * 1024;
+const MAX_EPUB_INPUT_BYTES = 30 * 1024 * 1024;
+
+export class WeeklyEpubValidationError extends Error {
+  override readonly name = "WeeklyEpubValidationError";
+}
 
 export function renderWeeklyEpub(input: WeeklyEpubInput): Buffer {
   assertCompleteEdition(input.entries);
@@ -29,7 +36,6 @@ export function renderWeeklyEpub(input: WeeklyEpubInput): Buffer {
   files["OEBPS/nav.xhtml"] = textFile(navXhtml(input));
   files["OEBPS/toc.ncx"] = textFile(tocNcx(input));
   files["OEBPS/cover.xhtml"] = textFile(coverXhtml(input.title));
-  files["OEBPS/images/cover.png"] = binaryFile(input.entries[0]?.coverPng ?? Buffer.alloc(0));
 
   input.entries.forEach((entry, index) => {
     const number = articleNumber(index);
@@ -37,18 +43,41 @@ export function renderWeeklyEpub(input: WeeklyEpubInput): Buffer {
     files[`OEBPS/images/article-${number}-cover.png`] = binaryFile(entry.coverPng);
   });
 
-  return Buffer.from(zipSync(files, { level: 6, mtime: ZIP_EPOCH }));
+  const epub = Buffer.from(zipSync(files, { level: 6, mtime: ZIP_EPOCH }));
+  if (epub.length > MAX_KTOOL_EPUB_BYTES) {
+    throw new WeeklyEpubValidationError("Weekly EPUB exceeds KTool's 20 MB upload limit");
+  }
+  return epub;
 }
 
 function assertCompleteEdition(entries: WeeklyEpubEntry[]): void {
-  if (entries.length !== 10) throw new Error("A weekly EPUB requires exactly 10 entries");
-  const sources = new Set(entries.map((entry) => entry.sourceName.trim().toLocaleLowerCase("en")));
-  if (sources.size !== 10) throw new Error("A weekly EPUB requires 10 distinct sources");
-  if (entries.some((entry) => entry.coverPng.length === 0)) {
-    throw new Error("Every weekly EPUB entry requires a cover image");
+  if (entries.length !== 10) {
+    throw new WeeklyEpubValidationError("A weekly EPUB requires exactly 10 entries");
   }
-  if (entries.some((entry) => entry.textContent.trim().length === 0)) {
-    throw new Error("Every weekly EPUB entry requires article text");
+  const sources = new Set(entries.map((entry) => entry.sourceName.trim().toLocaleLowerCase("en")));
+  if (sources.size !== 10) {
+    throw new WeeklyEpubValidationError("A weekly EPUB requires 10 distinct sources");
+  }
+  for (const entry of entries) assertPngCover(entry.coverPng);
+  if (entries.some((entry) => entry.contentHtml.trim().length === 0)) {
+    throw new WeeklyEpubValidationError("Every weekly EPUB entry requires article content");
+  }
+  const inputBytes = entries.reduce(
+    (total, entry) => total + entry.coverPng.length + Buffer.byteLength(entry.contentHtml, "utf8"),
+    0,
+  );
+  if (inputBytes > MAX_EPUB_INPUT_BYTES) {
+    throw new WeeklyEpubValidationError("Weekly EPUB inputs exceed the safe processing limit");
+  }
+}
+
+function assertPngCover(cover: Buffer): void {
+  const isPng =
+    cover.length >= 24 &&
+    cover.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) &&
+    cover.subarray(12, 16).toString("ascii") === "IHDR";
+  if (!isPng || cover.readUInt32BE(16) !== 1_200 || cover.readUInt32BE(20) !== 1_600) {
+    throw new WeeklyEpubValidationError("Every weekly EPUB cover must be a 1200 by 1600 PNG");
   }
 }
 
@@ -72,7 +101,11 @@ function contentOpf(input: WeeklyEpubInput): string {
   const articleManifest = input.entries
     .map((_, index) => {
       const number = articleNumber(index);
-      return `    <item id="article-${number}" href="article-${number}.xhtml" media-type="application/xhtml+xml"/>\n    <item id="article-${number}-cover" href="images/article-${number}-cover.png" media-type="image/png"/>`;
+      const coverItem =
+        index === 0
+          ? ""
+          : `\n    <item id="article-${number}-cover" href="images/article-${number}-cover.png" media-type="image/png"/>`;
+      return `    <item id="article-${number}" href="article-${number}.xhtml" media-type="application/xhtml+xml"/>${coverItem}`;
     })
     .join("\n");
   const spine = input.entries
@@ -93,7 +126,7 @@ function contentOpf(input: WeeklyEpubInput): string {
     <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
     <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>
     <item id="cover-page" href="cover.xhtml" media-type="application/xhtml+xml"/>
-    <item id="cover-image" href="images/cover.png" media-type="image/png" properties="cover-image"/>
+    <item id="cover-image" href="images/article-01-cover.png" media-type="image/png" properties="cover-image"/>
 ${articleManifest}
   </manifest>
   <spine toc="ncx">
@@ -138,26 +171,61 @@ ${points}
 function coverXhtml(title: string): string {
   return xhtmlDocument(
     title,
-    `<section class="cover" epub:type="cover"><img src="images/cover.png" alt="${escapeXml(title)} cover"/></section>`,
+    `<section class="cover" epub:type="cover"><img src="images/article-01-cover.png" alt="${escapeXml(title)} cover"/></section>`,
   );
 }
 
 function articleXhtml(entry: WeeklyEpubEntry, number: string): string {
-  const paragraphs = entry.textContent
-    .split(/\n{2,}/u)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
-    .map((paragraph) => `<p>${escapeXml(paragraph).replace(/\n/gu, "<br/>")}</p>`)
-    .join("\n");
+  const articleContent = contentHtmlToXhtml(entry.contentHtml);
   const body = `<article>
   <img class="article-cover" src="images/article-${number}-cover.png" alt="Editorial cover for ${escapeXml(entry.title)}"/>
   <p class="source">${escapeXml(entry.sourceName)}</p>
   <h1>${escapeXml(entry.title)}</h1>
   <p class="summary">${escapeXml(entry.summary)}</p>
-  ${paragraphs}
+  ${articleContent}
   <p class="original"><a href="${escapeXml(entry.originalUrl)}">Read the original article</a></p>
 </article>`;
   return xhtmlDocument(entry.title, body);
+}
+
+function contentHtmlToXhtml(contentHtml: string): string {
+  const dom = new JSDOM(`<body>${contentHtml}</body>`);
+  const { document, XMLSerializer } = dom.window;
+  document
+    .querySelectorAll(
+      "script,style,iframe,object,embed,form,input,button,svg,math,img,picture,source,video,audio,canvas",
+    )
+    .forEach((element) => {
+      element.remove();
+    });
+  document.querySelectorAll("*").forEach((element) => {
+    const allowed =
+      element.tagName === "A"
+        ? new Set(["href", "title"])
+        : element.tagName === "TD" || element.tagName === "TH"
+          ? new Set(["colspan", "rowspan", "scope"])
+          : new Set<string>();
+    for (const attribute of Array.from(element.attributes)) {
+      if (!allowed.has(attribute.name.toLocaleLowerCase("en"))) {
+        element.removeAttribute(attribute.name);
+      }
+    }
+    if (element.tagName === "A") {
+      const href = element.getAttribute("href");
+      if (href && !/^https?:\/\//iu.test(href)) element.removeAttribute("href");
+    }
+  });
+  document.querySelectorAll("figure").forEach((figure) => {
+    if (!figure.textContent?.trim()) figure.remove();
+  });
+  const serializer = new XMLSerializer();
+  return Array.from(document.body.childNodes)
+    .map((node) =>
+      serializer
+        .serializeToString(node)
+        .replace(/\s+xmlns="http:\/\/www\.w3\.org\/1999\/xhtml"/gu, ""),
+    )
+    .join("\n");
 }
 
 function xhtmlDocument(title: string, body: string): string {
@@ -185,7 +253,18 @@ function articleNumber(index: number): string {
 }
 
 function escapeXml(value: string): string {
-  return value
+  const xmlSafe = Array.from(value)
+    .filter((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return (
+        codePoint === 0x09 ||
+        codePoint === 0x0a ||
+        codePoint === 0x0d ||
+        (codePoint >= 0x20 && codePoint !== 0x7f && !(codePoint >= 0xd800 && codePoint <= 0xdfff))
+      );
+    })
+    .join("");
+  return xmlSafe
     .replace(/&/gu, "&amp;")
     .replace(/</gu, "&lt;")
     .replace(/>/gu, "&gt;")

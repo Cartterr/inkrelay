@@ -1,12 +1,23 @@
 import { unzipSync } from "fflate";
-import { describe, expect, test } from "vitest";
+import { beforeAll, describe, expect, test } from "vitest";
 
+import { renderMonochromeCover } from "../src/cover.js";
 import { renderWeeklyEpub, type WeeklyEpubEntry } from "../src/epub.js";
 
-const coverPng = Buffer.from(
+const onePixelPng = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
   "base64",
 );
+let coverPng: Buffer;
+
+beforeAll(async () => {
+  coverPng = await renderMonochromeCover({
+    title: "A Production-Grade Rendering Architecture",
+    sourceName: "ACM SIGGRAPH Blog",
+    category: "graphics",
+    editionLabel: "INKRELAY / WEEK 33",
+  });
+});
 
 function makeEntries(count = 10): WeeklyEpubEntry[] {
   return Array.from({ length: count }, (_, index) => ({
@@ -14,7 +25,7 @@ function makeEntries(count = 10): WeeklyEpubEntry[] {
     title: `Technical article ${index + 1}`,
     sourceName: `Distinct source ${index + 1}`,
     summary: `A detailed editorial summary for article ${index + 1}.`,
-    textContent: `Opening paragraph for article ${index + 1}.\n\nSecond substantive paragraph.`,
+    contentHtml: `<p onclick="steal()">Opening paragraph for article ${index + 1}.</p><h2>Architecture</h2><p>Second substantive paragraph.</p><script>alert(1)</script><a href="javascript:alert(2)">unsafe link</a>`,
     originalUrl: `https://source.example/articles/${index + 1}`,
     publishedAt: "2026-08-09T12:00:00.000Z",
     coverPng,
@@ -42,16 +53,25 @@ describe("weekly EPUB", () => {
 
     expect(text("mimetype")).toBe("application/epub+zip");
     expect(opf).toContain('<meta name="cover" content="cover-image"/>');
-    expect(opf).toContain('id="cover-image" href="images/cover.png"');
+    expect(opf).toContain('id="cover-image" href="images/article-01-cover.png"');
     expect(opf).toContain('properties="cover-image"');
     expect(opf).toContain('<itemref idref="cover-page"/>');
-    expect(Buffer.from(files["OEBPS/images/cover.png"] ?? [])).toEqual(coverPng);
-    expect(text("OEBPS/cover.xhtml")).toContain('src="images/cover.png"');
+    expect(files["OEBPS/images/cover.png"]).toBeUndefined();
+    expect(Buffer.from(files["OEBPS/images/article-01-cover.png"] ?? [])).toEqual(coverPng);
+    expect(text("OEBPS/cover.xhtml")).toContain('src="images/article-01-cover.png"');
     expect(text("OEBPS/article-01.xhtml")).toContain('src="images/article-01-cover.png"');
     expect(text("OEBPS/article-01.xhtml")).toContain("Opening paragraph for article 1.");
+    expect(text("OEBPS/article-01.xhtml")).toContain("<h2>Architecture</h2>");
+    expect(text("OEBPS/article-01.xhtml")).toContain("Second substantive paragraph.");
+    expect(text("OEBPS/article-01.xhtml")).not.toContain("onclick");
+    expect(text("OEBPS/article-01.xhtml")).not.toContain("<script");
+    expect(text("OEBPS/article-01.xhtml")).not.toContain("javascript:");
     expect(text("OEBPS/nav.xhtml")).toContain("Technical article 10");
     expect(
       Object.keys(files).filter((path) => /OEBPS\/article-\d{2}\.xhtml/u.test(path)),
+    ).toHaveLength(10);
+    expect(
+      Object.keys(files).filter((path) => /OEBPS\/images\/article-\d{2}-cover\.png/u.test(path)),
     ).toHaveLength(10);
   });
 
@@ -76,15 +96,26 @@ describe("weekly EPUB", () => {
       }),
     ).toThrow("10 distinct sources");
 
-    const missingText = makeEntries();
-    missingText[0] = { ...missingText[0], textContent: "" };
+    const missingContent = makeEntries();
+    missingContent[0] = { ...missingContent[0], contentHtml: "" };
     expect(() =>
       renderWeeklyEpub({
-        editionId: "missing-text",
-        title: "Missing text",
+        editionId: "missing-content",
+        title: "Missing content",
         publishedAt: "2026-08-15T22:00:00.000Z",
-        entries: missingText,
+        entries: missingContent,
       }),
-    ).toThrow("requires article text");
+    ).toThrow("requires article content");
+
+    const invalidCover = makeEntries();
+    invalidCover[0] = { ...invalidCover[0], coverPng: onePixelPng };
+    expect(() =>
+      renderWeeklyEpub({
+        editionId: "invalid-cover",
+        title: "Invalid cover",
+        publishedAt: "2026-08-15T22:00:00.000Z",
+        entries: invalidCover,
+      }),
+    ).toThrow("1200 by 1600 PNG");
   });
 });

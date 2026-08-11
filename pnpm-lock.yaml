@@ -147,9 +147,16 @@ importers:
       fflate:
         specifier: ^0.8.3
         version: 0.8.3
+      jsdom:
+        specifier: ^26.1.0
+        version: 26.1.0
       sharp:
         specifier: ^0.35.0
         version: 0.35.3(@types/node@24.13.3)
+    devDependencies:
+      '@types/jsdom':
+        specifier: ^21.1.7
+        version: 21.1.7
 
 packages:
 
