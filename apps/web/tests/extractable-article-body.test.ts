@@ -1,4 +1,5 @@
 import { Readability } from "@mozilla/readability";
+import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -47,10 +48,14 @@ test("survives the Mozilla Readability pass KTool applies", async () => {
       title: "Rendering digital humans",
     }),
   );
+  const globalCss = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  const sentinelCss = globalCss.match(/\.reader-cover-sentinel\s*\{[^}]*\}/u)?.[0] ?? "";
+  expect(sentinelCss).not.toContain("display: none");
   const dom = new JSDOM(
-    `<!doctype html><html><head><title>Rendering digital humans</title></head><body><article>${markup}</article></body></html>`,
+    `<!doctype html><html><head><title>Rendering digital humans</title><style>${sentinelCss}</style></head><body><article>${markup}</article></body></html>`,
     {
       url: "https://inkrelay.example/a/opaque/rendering-digital-humans",
+      pretendToBeVisual: true,
     },
   );
 
