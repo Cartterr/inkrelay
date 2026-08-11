@@ -431,6 +431,18 @@ p.inline-error {
   display: block;
   filter: grayscale(1);
 }
+.reader-article-content {
+  --reader-gutter: clamp(24px, 8vw, 86px);
+}
+.reader-cover-figure {
+  margin: 0 calc(-1 * var(--reader-gutter)) 32px;
+}
+.reader-cover-caption {
+  margin: 10px var(--reader-gutter) 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-align: center;
+}
 .reader-header,
 .reader-article-content,
 .reader-attribution {

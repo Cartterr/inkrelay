@@ -1,5 +1,3 @@
-import Image from "next/image";
-
 export function ExtractableArticleBody({
   articleHtml,
   assetAccessId,
@@ -9,26 +7,33 @@ export function ExtractableArticleBody({
   assetAccessId: string;
   title: string;
 }) {
+  const coverLabel = `Editorial cover for ${title}`;
+  const coverMarkup = [
+    '<figure class="reader-cover-figure">',
+    `<img class="reader-cover" src="/assets/${encodeURIComponent(assetAccessId)}" alt="${escapeHtml(coverLabel)}" width="1200" height="1600">`,
+    `<figcaption class="reader-cover-caption">${escapeHtml(coverLabel)}</figcaption>`,
+    "</figure>",
+  ].join("");
+
   return (
     <div className="reader-body">
       <div className="reader-content">
-        {/* KTool converts this exact content node, so the cover must live inside it. */}
-        <Image
-          className="reader-cover"
-          src={`/assets/${encodeURIComponent(assetAccessId)}`}
-          alt={`Editorial cover for ${title}`}
-          width={1200}
-          height={1600}
-          priority
-          unoptimized
-        />
         <div
           className="reader-article-content"
           // This HTML passed Mozilla Readability and InkRelay's strict sanitize-html allowlist.
           // biome-ignore lint/security/noDangerouslySetInnerHtml: Rendering the already-sanitized article body is the purpose of this component.
-          dangerouslySetInnerHTML={{ __html: articleHtml }}
+          dangerouslySetInnerHTML={{ __html: `${coverMarkup}${articleHtml}` }}
         />
       </div>
     </div>
   );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/gu, "&amp;")
+    .replace(/</gu, "&lt;")
+    .replace(/>/gu, "&gt;")
+    .replace(/"/gu, "&quot;")
+    .replace(/'/gu, "&#39;");
 }
