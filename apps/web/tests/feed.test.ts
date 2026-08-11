@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { slugify, toPublishedFeedEntries } from "../lib/feed.js";
+import { normalizeSourceSlug, slugify, toPublishedFeedEntries } from "../lib/feed.js";
 
 describe("web feed projection", () => {
   test("uses opaque article and asset identifiers without a feed key", () => {
@@ -49,5 +49,10 @@ describe("web feed projection", () => {
 
   test("creates stable readable slugs", () => {
     expect(slugify("GPU Rendering & Production — 2026")).toBe("gpu-rendering-production-2026");
+  });
+
+  test("normalizes source route params with or without the XML suffix", () => {
+    expect(normalizeSourceSlug("interconnects-ai.xml")).toBe("interconnects-ai");
+    expect(normalizeSourceSlug("interconnects-ai")).toBe("interconnects-ai");
   });
 });
