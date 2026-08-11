@@ -1,4 +1,3 @@
-import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { parseRuntimeConfig, SOURCES } from "@inkrelay/core";
@@ -9,6 +8,7 @@ import {
   migrateDatabase,
   seedSourceRegistry,
 } from "@inkrelay/db";
+import { databaseMigrationsPath } from "@inkrelay/db/migration-path";
 import { S3AssetStore } from "@inkrelay/rendering";
 import { PgBoss } from "pg-boss";
 
@@ -19,7 +19,7 @@ import { ensureQueues } from "./queue.js";
 const config = parseRuntimeConfig(process.env);
 const logger = createLogger(config.logLevel);
 const connection = createDatabase(config.databaseUrl);
-await migrateDatabase(connection, path.resolve(process.cwd(), "packages/db/migrations"));
+await migrateDatabase(connection, databaseMigrationsPath);
 await seedSourceRegistry(connection, SOURCES);
 
 const boss = new PgBoss({ connectionString: config.databaseUrl, schema: "pgboss" });

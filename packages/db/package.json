@@ -10,6 +10,11 @@
       "types": "./dist/index.d.ts",
       "development": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./migration-path": {
+      "types": "./dist/migration-path.d.ts",
+      "development": "./src/migration-path.ts",
+      "import": "./dist/migration-path.js"
     }
   },
   "scripts": {

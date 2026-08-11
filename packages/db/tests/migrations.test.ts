@@ -1,6 +1,9 @@
 import { access, readFile } from "node:fs/promises";
+import path from "node:path";
 
 import { describe, expect, test } from "vitest";
+
+import { databaseMigrationsPath } from "../src/migration-path.js";
 
 interface MigrationJournal {
   dialect: string;
@@ -9,8 +12,8 @@ interface MigrationJournal {
 
 describe("migration bundle", () => {
   test("ships a Drizzle journal for every SQL migration", async () => {
-    const journalUrl = new URL("../migrations/meta/_journal.json", import.meta.url);
-    const journal = JSON.parse(await readFile(journalUrl, "utf8")) as MigrationJournal;
+    const journalPath = path.join(databaseMigrationsPath, "meta", "_journal.json");
+    const journal = JSON.parse(await readFile(journalPath, "utf8")) as MigrationJournal;
 
     expect(journal.dialect).toBe("postgresql");
     expect(journal.entries.map(({ idx, tag }) => ({ idx, tag }))).toEqual([
@@ -18,9 +21,7 @@ describe("migration bundle", () => {
     ]);
 
     await Promise.all(
-      journal.entries.map(({ tag }) =>
-        access(new URL(`../migrations/${tag}.sql`, import.meta.url)),
-      ),
+      journal.entries.map(({ tag }) => access(path.join(databaseMigrationsPath, `${tag}.sql`))),
     );
   });
 });
