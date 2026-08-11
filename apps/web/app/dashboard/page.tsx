@@ -50,7 +50,7 @@ export default async function DashboardPage() {
         <Metric
           label="Next edition"
           value={newestEdition?.id ?? "Not seeded"}
-          note={newestEdition?.status ?? "waiting for candidates"}
+          note={newestEdition?.deliveryStatus ?? newestEdition?.status ?? "waiting for candidates"}
         />
         <Metric label="Workers" value={String(healthyWorkers)} note="heartbeats under 90 seconds" />
         <Metric label="Source policy" value="58 fixed" note="no automatic expansion" />
@@ -59,8 +59,11 @@ export default async function DashboardPage() {
       <section className="panel edition-panel">
         <div>
           <p className="eyebrow">Access control</p>
-          <h2>Private KTool feeds</h2>
-          <p>Article and asset links remain independent from the key embedded in feed routes.</p>
+          <h2>Private publication access</h2>
+          <p>
+            Direct Kindle delivery is primary. Protected feeds remain available as a reversible
+            compatibility path.
+          </p>
         </div>
         <RotateFeedKey />
       </section>
@@ -165,11 +168,14 @@ export default async function DashboardPage() {
             {snapshot.editions.map((edition) => (
               <div key={edition.id}>
                 <strong>{edition.id}</strong>
-                <span>{edition.status}</span>
+                <span>
+                  {edition.status} · Kindle {edition.deliveryStatus ?? "not configured"}
+                </span>
                 <time>
                   {edition.scheduledAt.toLocaleString("en-US", { timeZone: "America/Santiago" })}
                 </time>
                 {edition.failureReason ? <p>{edition.failureReason}</p> : null}
+                {edition.deliveryErrorCode ? <p>{edition.deliveryErrorCode}</p> : null}
               </div>
             ))}
           </div>

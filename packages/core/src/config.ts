@@ -21,6 +21,14 @@ const environmentSchema = z.object({
   AWS_S3_BUCKET_NAME: z.string().min(1),
   AWS_DEFAULT_REGION: z.string().min(1).default("auto"),
   AWS_S3_URL_STYLE: z.enum(["virtual", "path"]).default("virtual"),
+  KINDLE_DELIVERY_ENABLED: z.enum(["true", "false"]).default("false"),
+  KINDLE_DESTINATION_EMAIL: z.string().email().optional(),
+  KINDLE_SENDER_EMAIL: z.string().email().optional(),
+  SES_REGION: z.string().min(1).optional(),
+  SES_ACCESS_KEY_ID: z.string().min(1).optional(),
+  SES_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  SES_ENDPOINT_URL: z.string().url().optional(),
+  SES_CONFIGURATION_SET: z.string().min(1).optional(),
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
 });
 
@@ -47,6 +55,15 @@ export interface RuntimeConfig {
     region: string;
     forcePathStyle: boolean;
   };
+  kindleDelivery: {
+    destinationEmail: string;
+    senderEmail: string;
+    region: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
+    endpoint?: string;
+    configurationSet?: string;
+  } | null;
   logLevel: "debug" | "info" | "warn" | "error";
 }
 
@@ -59,6 +76,7 @@ export function parseRuntimeConfig(environment: Record<string, string | undefine
   if (parsed.NODE_ENV === "production" && publicBaseUrl.protocol !== "https:") {
     throw new Error("PUBLIC_BASE_URL must use HTTPS in production");
   }
+  const kindleDelivery = parseKindleDelivery(parsed);
 
   return {
     nodeEnv: parsed.NODE_ENV,
@@ -89,7 +107,37 @@ export function parseRuntimeConfig(environment: Record<string, string | undefine
       region: parsed.AWS_DEFAULT_REGION,
       forcePathStyle: parsed.AWS_S3_URL_STYLE === "path",
     },
+    kindleDelivery,
     logLevel: parsed.LOG_LEVEL,
+  };
+}
+
+function parseKindleDelivery(
+  parsed: z.infer<typeof environmentSchema>,
+): RuntimeConfig["kindleDelivery"] {
+  if (parsed.KINDLE_DELIVERY_ENABLED !== "true") return null;
+  if (!parsed.KINDLE_DESTINATION_EMAIL || !parsed.KINDLE_SENDER_EMAIL || !parsed.SES_REGION) {
+    throw new Error(
+      "Kindle delivery configuration must include destination, sender, and SES region",
+    );
+  }
+  const hasAccessKey = Boolean(parsed.SES_ACCESS_KEY_ID);
+  const hasSecretKey = Boolean(parsed.SES_SECRET_ACCESS_KEY);
+  if (hasAccessKey !== hasSecretKey) {
+    throw new Error("SES credentials must include both access key ID and secret access key");
+  }
+  return {
+    destinationEmail: parsed.KINDLE_DESTINATION_EMAIL,
+    senderEmail: parsed.KINDLE_SENDER_EMAIL,
+    region: parsed.SES_REGION,
+    ...(parsed.SES_ACCESS_KEY_ID && parsed.SES_SECRET_ACCESS_KEY
+      ? {
+          accessKeyId: parsed.SES_ACCESS_KEY_ID,
+          secretAccessKey: parsed.SES_SECRET_ACCESS_KEY,
+        }
+      : {}),
+    ...(parsed.SES_ENDPOINT_URL ? { endpoint: parsed.SES_ENDPOINT_URL } : {}),
+    ...(parsed.SES_CONFIGURATION_SET ? { configurationSet: parsed.SES_CONFIGURATION_SET } : {}),
   };
 }
 

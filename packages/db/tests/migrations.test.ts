@@ -18,6 +18,7 @@ describe("migration bundle", () => {
     expect(journal.dialect).toBe("postgresql");
     expect(journal.entries.map(({ idx, tag }) => ({ idx, tag }))).toEqual([
       { idx: 0, tag: "0000_initial" },
+      { idx: 1, tag: "0001_direct_kindle_delivery" },
     ]);
 
     await Promise.all(

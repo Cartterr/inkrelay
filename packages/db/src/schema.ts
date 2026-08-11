@@ -29,6 +29,12 @@ export const editionStatus = pgEnum("edition_status", [
   "published",
   "failed",
 ]);
+export const deliveryStatus = pgEnum("delivery_status", [
+  "pending",
+  "sending",
+  "delivered",
+  "failed",
+]);
 export const overrideMode = pgEnum("override_mode", ["none", "promote", "suppress", "lock"]);
 
 const createdAt = timestamp("created_at", { withTimezone: true }).notNull().defaultNow();
@@ -147,6 +153,21 @@ export const weeklyEditions = pgTable("weekly_editions", {
   scheduledAt: timestamp("scheduled_at", { withTimezone: true }).notNull(),
   publishedAt: timestamp("published_at", { withTimezone: true }),
   failureReason: text("failure_reason"),
+  createdAt,
+  updatedAt,
+});
+
+export const editionDeliveries = pgTable("edition_deliveries", {
+  editionId: text("edition_id")
+    .primaryKey()
+    .references(() => weeklyEditions.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull().default("amazon-ses"),
+  status: deliveryStatus("status").notNull().default("pending"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  providerMessageId: text("provider_message_id"),
+  lastErrorCode: text("last_error_code"),
+  sendingStartedAt: timestamp("sending_started_at", { withTimezone: true }),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   createdAt,
   updatedAt,
 });

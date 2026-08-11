@@ -16,9 +16,12 @@ import {
 } from "@inkrelay/core";
 import {
   articleForWork,
+  claimEditionDelivery,
   completeRetentionCleanup,
   expiredAssets,
   failEdition,
+  markEditionDelivered,
+  markEditionDeliveryFailed,
   markExtractionFailed,
   parseJobPayload,
   persistFeedCursor,
@@ -30,13 +33,20 @@ import {
   sourceState,
   upsertFeedEntry,
   weeklyCandidates,
+  weeklyEntriesByEdition,
   type DatabaseConnection,
 } from "@inkrelay/db";
-import { renderMonochromeCover, type AssetStore } from "@inkrelay/rendering";
+import {
+  renderMonochromeCover,
+  renderWeeklyEpub,
+  type AssetStore,
+  type WeeklyEpubEntry,
+} from "@inkrelay/rendering";
 import type { Logger } from "pino";
 import type { Job, PgBoss } from "pg-boss";
 
 import { DEFAULT_JOB_OPTIONS } from "./queue.js";
+import type { KindleDeliveryProvider } from "./kindle.js";
 
 export interface WorkerDependencies {
   boss: PgBoss;
@@ -44,6 +54,7 @@ export interface WorkerDependencies {
   config: RuntimeConfig;
   store: AssetStore;
   provider: AiProvider;
+  kindleProvider: KindleDeliveryProvider | null;
   logger: Logger;
 }
 
@@ -69,6 +80,9 @@ export async function registerHandlers(dependencies: WorkerDependencies): Promis
   );
   await boss.work("publish-edition", { batchSize: 1, localConcurrency: 1 }, (jobs) =>
     withJob(dependencies, "publish-edition", jobs, handlePublication),
+  );
+  await boss.work("deliver-edition", { batchSize: 1, localConcurrency: 1 }, (jobs) =>
+    withJob(dependencies, "deliver-edition", jobs, handleDelivery),
   );
   await boss.work("cleanup-retention", { batchSize: 1, localConcurrency: 1 }, (jobs) =>
     withJob(dependencies, "cleanup-retention", jobs, handleCleanup),
@@ -299,6 +313,87 @@ async function handlePublication(
     await failEdition(dependencies.connection, payload.editionId, now, errorCode(error));
     throw error;
   }
+  if (dependencies.kindleProvider) {
+    await dependencies.boss.send(
+      "deliver-edition",
+      { editionId: payload.editionId },
+      {
+        ...DEFAULT_JOB_OPTIONS,
+        retryLimit: 3,
+        singletonKey: `delivery:${payload.editionId}`,
+      },
+    );
+  }
+}
+
+async function handleDelivery(
+  dependencies: WorkerDependencies,
+  payload: { editionId: string },
+): Promise<void> {
+  if (!dependencies.kindleProvider || !dependencies.config.kindleDelivery) {
+    dependencies.logger.warn(
+      { editionHash: hashIdentifier(payload.editionId) },
+      "kindle.delivery_disabled",
+    );
+    return;
+  }
+  const claim = await claimEditionDelivery(dependencies.connection, payload.editionId);
+  if (!claim.claimed) {
+    dependencies.logger.info(
+      { editionHash: hashIdentifier(payload.editionId), deliveryStatus: claim.status },
+      "kindle.delivery_skipped",
+    );
+    return;
+  }
+
+  let result: { messageId: string | null };
+  try {
+    const epub = await renderEditionEpub(dependencies, payload.editionId);
+    result = await dependencies.kindleProvider.send({ editionId: payload.editionId, epub });
+  } catch (error) {
+    await markEditionDeliveryFailed(dependencies.connection, payload.editionId, errorCode(error));
+    throw error;
+  }
+
+  await markEditionDelivered(dependencies.connection, payload.editionId, result.messageId);
+  dependencies.logger.info(
+    {
+      editionHash: hashIdentifier(payload.editionId),
+      recipientHash: hashIdentifier(dependencies.config.kindleDelivery.destinationEmail),
+    },
+    "kindle.delivered",
+  );
+}
+
+async function renderEditionEpub(
+  dependencies: WorkerDependencies,
+  editionId: string,
+): Promise<Buffer> {
+  const rows = await weeklyEntriesByEdition(dependencies.connection, editionId);
+  const entries: WeeklyEpubEntry[] = [];
+  for (const row of rows) {
+    const cover = await dependencies.store.get(row.storageKey);
+    if (cover?.contentType !== "image/png") {
+      throw new Error("Edition cover is unavailable");
+    }
+    entries.push({
+      articleId: row.articleId,
+      title: row.title,
+      sourceName: row.sourceName,
+      summary: row.summary ?? "A carefully selected technical article.",
+      contentHtml: row.contentHtml ?? "",
+      originalUrl: row.originalUrl,
+      publishedAt: row.publishedAt?.toISOString() ?? new Date(0).toISOString(),
+      coverPng: cover.body,
+    });
+  }
+  const publishedAt = rows[0]?.publishedAt?.toISOString() ?? new Date(0).toISOString();
+  return renderWeeklyEpub({
+    editionId,
+    title: `InkRelay Weekly · ${editionId}`,
+    publishedAt,
+    entries,
+  });
 }
 
 async function handleCleanup(dependencies: WorkerDependencies): Promise<void> {

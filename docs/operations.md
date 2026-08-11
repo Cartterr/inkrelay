@@ -23,6 +23,21 @@ The current Railway bucket credentials specify `AWS_S3_URL_STYLE=virtual`. Keep 
 and inject its credentials into both web and worker through Railway variable references; InkRelay
 proxies assets through opaque `/assets/:assetAccessId` routes.
 
+## Direct Kindle delivery
+
+Configure these variables on the worker only:
+
+- `KINDLE_DELIVERY_ENABLED=true`
+- `KINDLE_DESTINATION_EMAIL` — the existing Send-to-Kindle address
+- `KINDLE_SENDER_EMAIL` — a verified SES identity that is also approved by the Amazon account
+- `SES_REGION`
+- `SES_ACCESS_KEY_ID` and `SES_SECRET_ACCESS_KEY`, unless the runtime has an AWS role
+
+Use a dedicated least-privilege IAM principal allowed only to call `ses:SendRawEmail` from the
+verified identity. Do not reuse the Railway Bucket `AWS_*` credentials. Enabling delivery and
+restarting the worker enqueues the latest published edition once; subsequent editions enqueue
+immediately after atomic publication.
+
 ## Release
 
 GitHub Actions runs formatting, linting, type checks, tests, builds, dependency auditing, and secret scanning. Railway autodeploys `main` only after successful check suites. Database migrations run as a pre-deploy command.
@@ -40,12 +55,7 @@ Official references: [monorepo deployments](https://docs.railway.com/deployments
 [Wait for CI](https://docs.railway.com/deployments/github-autodeploys), and
 [volume backups](https://docs.railway.com/volumes/backups).
 
-## KTool cutover
+## Legacy KTool rollback
 
-1. Validate a generated page through Quick Send.
-2. Pilot ACM SIGGRAPH Blog, Interconnects AI, and Game Developer.
-3. Replace five subscriptions individually.
-4. Replace remaining subscriptions in batches of ten.
-5. Observe a complete weekly cycle.
-
-Never remove an original subscription until the matching proxy has been verified and the operator explicitly authorizes the removal.
+Protected feeds and the weekly EPUB route remain available if direct delivery is unavailable. KTool
+subscription changes remain outside deployment scope and require explicit action-time authorization.

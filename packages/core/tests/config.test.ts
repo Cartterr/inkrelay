@@ -36,4 +36,43 @@ describe("runtime configuration", () => {
       "AI text provider",
     );
   });
+
+  test("keeps Kindle delivery disabled unless explicitly enabled", () => {
+    expect(parseRuntimeConfig(valid).kindleDelivery).toBeNull();
+  });
+
+  test("accepts a complete dedicated SES Kindle delivery configuration", () => {
+    const config = parseRuntimeConfig({
+      ...valid,
+      KINDLE_DELIVERY_ENABLED: "true",
+      KINDLE_DESTINATION_EMAIL: "reader_123@kindle.com",
+      KINDLE_SENDER_EMAIL: "delivery@example.com",
+      SES_REGION: "us-east-1",
+      SES_ACCESS_KEY_ID: "ses-access",
+      SES_SECRET_ACCESS_KEY: "ses-secret",
+    });
+
+    expect(config.kindleDelivery).toMatchObject({
+      destinationEmail: "reader_123@kindle.com",
+      senderEmail: "delivery@example.com",
+      region: "us-east-1",
+      accessKeyId: "ses-access",
+    });
+  });
+
+  test("rejects incomplete Kindle delivery configuration", () => {
+    expect(() => parseRuntimeConfig({ ...valid, KINDLE_DELIVERY_ENABLED: "true" })).toThrow(
+      "Kindle delivery configuration",
+    );
+    expect(() =>
+      parseRuntimeConfig({
+        ...valid,
+        KINDLE_DELIVERY_ENABLED: "true",
+        KINDLE_DESTINATION_EMAIL: "reader@kindle.com",
+        KINDLE_SENDER_EMAIL: "delivery@example.com",
+        SES_REGION: "us-east-1",
+        SES_ACCESS_KEY_ID: "access-only",
+      }),
+    ).toThrow("SES credentials");
+  });
 });

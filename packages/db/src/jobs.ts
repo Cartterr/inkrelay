@@ -6,6 +6,7 @@ export const JOB_NAMES = [
   "evaluate-article",
   "generate-cover",
   "publish-edition",
+  "deliver-edition",
   "cleanup-retention",
 ] as const;
 
@@ -17,6 +18,7 @@ const payloadSchemas = {
   "evaluate-article": z.object({ articleId: z.string().uuid() }),
   "generate-cover": z.object({ articleId: z.string().uuid(), force: z.boolean().optional() }),
   "publish-edition": z.object({ editionId: z.string().min(1).max(40) }),
+  "deliver-edition": z.object({ editionId: z.string().min(1).max(40) }),
   "cleanup-retention": z.object({ requestedAt: z.string().datetime() }),
 } satisfies Record<JobName, z.ZodType>;
 
