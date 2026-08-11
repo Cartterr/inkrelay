@@ -14,10 +14,19 @@ async function metadataModule() {
   return import("../lib/article-metadata").catch(() => ({
     buildArticleMetadata: undefined,
     buildArticleStructuredData: undefined,
+    publicAssetUrl: undefined,
   }));
 }
 
 describe("article discovery metadata", () => {
+  test("builds an absolute encoded cover URL from the configured public origin", async () => {
+    const module = await metadataModule();
+
+    expect(module.publicAssetUrl?.("opaque cover/+?", "https://reader.example/")).toBe(
+      "https://reader.example/assets/opaque%20cover%2F%2B%3F",
+    );
+  });
+
   test("identifies the public article and cover to server-side readers", async () => {
     const module = await metadataModule();
 
