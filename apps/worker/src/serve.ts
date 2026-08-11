@@ -14,6 +14,7 @@ import { S3AssetStore } from "@inkrelay/rendering";
 import { PgBoss } from "pg-boss";
 
 import { createAiProvider, registerHandlers } from "./handlers.js";
+import { enqueueLatestEditionCoverUpgrade } from "./cover-upgrade.js";
 import { SesKindleDeliveryProvider } from "./kindle.js";
 import { createLogger } from "./logging.js";
 import { DEFAULT_JOB_OPTIONS, ensureQueues } from "./queue.js";
@@ -48,6 +49,11 @@ await registerHandlers({
     : null,
   logger,
 });
+
+const upgradedCoverCount = await enqueueLatestEditionCoverUpgrade(boss, connection);
+if (upgradedCoverCount > 0) {
+  logger.info({ coverCount: upgradedCoverCount }, "cover.upgrade_enqueued");
+}
 
 if (config.kindleDelivery) {
   const editionId = await latestPublishedEditionId(connection);

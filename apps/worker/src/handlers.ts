@@ -37,6 +37,7 @@ import {
   type DatabaseConnection,
 } from "@inkrelay/db";
 import {
+  COVER_RENDERER_VERSION,
   renderMonochromeCover,
   renderWeeklyEpub,
   type AssetStore,
@@ -272,7 +273,7 @@ async function handleCover(
     articleId: payload.articleId,
     assetAccessId,
     storageKey,
-    generationSource: sourceImage ? "source-image" : "deterministic-fallback",
+    generationSource: `${sourceImage ? "source-image" : "deterministic-fallback"}:${COVER_RENDERER_VERSION}`,
   });
 }
 
@@ -390,7 +391,7 @@ async function renderEditionEpub(
   const publishedAt = rows[0]?.publishedAt?.toISOString() ?? new Date(0).toISOString();
   return renderWeeklyEpub({
     editionId,
-    title: `InkRelay Weekly · ${editionId}`,
+    title: `InkRelay Weekly - ${editionId}`,
     publishedAt,
     entries,
   });
