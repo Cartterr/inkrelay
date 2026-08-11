@@ -162,6 +162,7 @@ export const editionDeliveries = pgTable("edition_deliveries", {
     .primaryKey()
     .references(() => weeklyEditions.id, { onDelete: "cascade" }),
   provider: text("provider").notNull().default("amazon-ses"),
+  deliveryFormat: text("delivery_format").notNull().default("per-article-v1"),
   status: deliveryStatus("status").notNull().default("pending"),
   attemptCount: integer("attempt_count").notNull().default(0),
   providerMessageId: text("provider_message_id"),
@@ -171,6 +172,32 @@ export const editionDeliveries = pgTable("edition_deliveries", {
   createdAt,
   updatedAt,
 });
+
+export const editionDocumentDeliveries = pgTable(
+  "edition_document_deliveries",
+  {
+    editionId: text("edition_id")
+      .notNull()
+      .references(() => weeklyEditions.id, { onDelete: "cascade" }),
+    articleId: uuid("article_id")
+      .notNull()
+      .references(() => articles.id, { onDelete: "cascade" }),
+    rank: integer("rank").notNull(),
+    provider: text("provider").notNull().default("amazon-ses"),
+    status: deliveryStatus("status").notNull().default("pending"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    providerMessageId: text("provider_message_id"),
+    lastErrorCode: text("last_error_code"),
+    sendingStartedAt: timestamp("sending_started_at", { withTimezone: true }),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+    createdAt,
+    updatedAt,
+  },
+  (table) => [
+    primaryKey({ columns: [table.editionId, table.articleId] }),
+    uniqueIndex("edition_document_deliveries_rank_unique").on(table.editionId, table.rank),
+  ],
+);
 
 export const weeklySelections = pgTable(
   "weekly_selections",

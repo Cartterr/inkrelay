@@ -25,6 +25,8 @@ proxies assets through opaque `/assets/:assetAccessId` routes.
 
 ## Direct Kindle delivery
 
+Each weekly publication produces ten independent Kindle documents, one for every selected source/article. Inline editorial images are downloaded and embedded at delivery time; unavailable or unsafe images are skipped without blocking the remaining article or edition. Delivery retries are tracked per document.
+
 Configure these variables on the worker only:
 
 - `KINDLE_DELIVERY_ENABLED=true`

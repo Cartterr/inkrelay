@@ -2,6 +2,8 @@ import { strToU8, zipSync, type Zippable } from "fflate";
 import { JSDOM } from "jsdom";
 import sharp from "sharp";
 
+import { selectArticleImageUrl, type EmbeddedArticleImage } from "./article-images.js";
+
 export interface WeeklyEpubEntry {
   articleId: string;
   title: string;
@@ -11,6 +13,7 @@ export interface WeeklyEpubEntry {
   originalUrl: string;
   publishedAt: string;
   coverPng: Buffer;
+  inlineImages?: EmbeddedArticleImage[];
 }
 
 export interface WeeklyEpubInput {
@@ -18,6 +21,11 @@ export interface WeeklyEpubInput {
   title: string;
   publishedAt: string;
   entries: WeeklyEpubEntry[];
+}
+
+export interface ArticleEpubInput {
+  editionId: string;
+  entry: WeeklyEpubEntry;
 }
 
 const ZIP_EPOCH = new Date("2000-01-01T00:00:00.000Z");
@@ -30,6 +38,20 @@ export class WeeklyEpubValidationError extends Error {
 
 export async function renderWeeklyEpub(input: WeeklyEpubInput): Promise<Buffer> {
   assertCompleteEdition(input.entries);
+  return renderEpub(input);
+}
+
+export async function renderArticleEpub(input: ArticleEpubInput): Promise<Buffer> {
+  assertEntriesValid([input.entry]);
+  return renderEpub({
+    editionId: `${input.editionId}:${input.entry.articleId}`,
+    title: input.entry.title,
+    publishedAt: input.entry.publishedAt,
+    entries: [input.entry],
+  });
+}
+
+async function renderEpub(input: WeeklyEpubInput): Promise<Buffer> {
   const normalizedInput = {
     ...input,
     entries: await normalizeCovers(input.entries),
@@ -46,6 +68,9 @@ export async function renderWeeklyEpub(input: WeeklyEpubInput): Promise<Buffer> 
     const number = articleNumber(index);
     files[`OEBPS/article-${number}.xhtml`] = textFile(articleXhtml(entry, number));
     files[`OEBPS/images/article-${number}-cover.png`] = binaryFile(entry.coverPng);
+    entry.inlineImages?.forEach((image, imageIndex) => {
+      files[`OEBPS/${inlineImagePath(number, imageIndex)}`] = binaryFile(image.bytes);
+    });
   });
 
   const epub = Buffer.from(zipSync(files, { level: 6, mtime: ZIP_EPOCH }));
@@ -63,11 +88,19 @@ function assertCompleteEdition(entries: WeeklyEpubEntry[]): void {
   if (sources.size !== 10) {
     throw new WeeklyEpubValidationError("A weekly EPUB requires 10 distinct sources");
   }
+  assertEntriesValid(entries);
+}
+
+function assertEntriesValid(entries: WeeklyEpubEntry[]): void {
   if (entries.some((entry) => entry.contentHtml.trim().length === 0)) {
     throw new WeeklyEpubValidationError("Every weekly EPUB entry requires article content");
   }
   const inputBytes = entries.reduce(
-    (total, entry) => total + entry.coverPng.length + Buffer.byteLength(entry.contentHtml, "utf8"),
+    (total, entry) =>
+      total +
+      entry.coverPng.length +
+      Buffer.byteLength(entry.contentHtml, "utf8") +
+      (entry.inlineImages ?? []).reduce((imageTotal, image) => imageTotal + image.bytes.length, 0),
     0,
   );
   if (inputBytes > MAX_EPUB_INPUT_BYTES) {
@@ -130,13 +163,19 @@ function containerXml(): string {
 function contentOpf(input: WeeklyEpubInput): string {
   const modified = new Date(input.publishedAt).toISOString().replace(/\.\d{3}Z$/u, "Z");
   const articleManifest = input.entries
-    .map((_, index) => {
+    .map((entry, index) => {
       const number = articleNumber(index);
       const coverItem =
         index === 0
           ? ""
           : `\n    <item id="article-${number}-cover" href="images/article-${number}-cover.png" media-type="image/png"/>`;
-      return `    <item id="article-${number}" href="article-${number}.xhtml" media-type="application/xhtml+xml"/>${coverItem}`;
+      const imageItems = (entry.inlineImages ?? [])
+        .map(
+          (image, imageIndex) =>
+            `\n    <item id="article-${number}-image-${imageIndex + 1}" href="${inlineImagePath(number, imageIndex)}" media-type="${image.mediaType}"/>`,
+        )
+        .join("");
+      return `    <item id="article-${number}" href="article-${number}.xhtml" media-type="application/xhtml+xml"/>${coverItem}${imageItems}`;
     })
     .join("\n");
   const spine = input.entries
@@ -217,7 +256,7 @@ function coverXhtml(title: string): string {
 }
 
 function articleXhtml(entry: WeeklyEpubEntry, number: string): string {
-  const articleContent = contentHtmlToXhtml(entry.contentHtml);
+  const articleContent = contentHtmlToXhtml(entry, number);
   const body = `<article>
   <img class="article-cover" src="images/article-${number}-cover.png" alt="Editorial cover for ${escapeXml(entry.title)}"/>
   <p class="source">${escapeXml(entry.sourceName)}</p>
@@ -229,12 +268,44 @@ function articleXhtml(entry: WeeklyEpubEntry, number: string): string {
   return xhtmlDocument(entry.title, body);
 }
 
-function contentHtmlToXhtml(contentHtml: string): string {
-  const dom = new JSDOM(`<body>${contentHtml}</body>`);
+function contentHtmlToXhtml(entry: WeeklyEpubEntry, number: string): string {
+  const dom = new JSDOM(`<body>${entry.contentHtml}</body>`);
   const { document, XMLSerializer } = dom.window;
+  document.querySelectorAll("picture").forEach((picture) => {
+    const image = picture.querySelector("img");
+    if (image) picture.replaceWith(image);
+    else picture.remove();
+  });
+  document.querySelectorAll("source").forEach((source) => {
+    source.remove();
+  });
+  const imageIndexBySource = new Map(
+    (entry.inlineImages ?? []).map((image, imageIndex) => [image.sourceUrl, imageIndex] as const),
+  );
+  document.querySelectorAll("img").forEach((image) => {
+    const sourceUrl = selectArticleImageUrl(
+      { src: image.getAttribute("src"), srcset: image.getAttribute("srcset") },
+      entry.originalUrl,
+    );
+    const imageIndex = sourceUrl ? imageIndexBySource.get(sourceUrl) : undefined;
+    if (imageIndex === undefined) {
+      image.remove();
+      return;
+    }
+    const embedded = entry.inlineImages?.[imageIndex];
+    image.setAttribute("src", inlineImagePath(number, imageIndex));
+    image.setAttribute(
+      "alt",
+      image.getAttribute("alt")?.trim() || embedded?.alt || "Article image",
+    );
+    image.setAttribute("class", "inline-image");
+    image.removeAttribute("srcset");
+    image.removeAttribute("width");
+    image.removeAttribute("height");
+  });
   document
     .querySelectorAll(
-      "script,style,iframe,object,embed,form,input,button,svg,math,img,picture,source,video,audio,canvas",
+      "script,style,iframe,object,embed,form,input,button,svg,math,video,audio,canvas",
     )
     .forEach((element) => {
       element.remove();
@@ -243,9 +314,11 @@ function contentHtmlToXhtml(contentHtml: string): string {
     const allowed =
       element.tagName === "A"
         ? new Set(["href", "title"])
-        : element.tagName === "TD" || element.tagName === "TH"
-          ? new Set(["colspan", "rowspan", "scope"])
-          : new Set<string>();
+        : element.tagName === "IMG"
+          ? new Set(["src", "alt", "title", "class"])
+          : element.tagName === "TD" || element.tagName === "TH"
+            ? new Set(["colspan", "rowspan", "scope"])
+            : new Set<string>();
     for (const attribute of Array.from(element.attributes)) {
       if (!allowed.has(attribute.name.toLocaleLowerCase("en"))) {
         element.removeAttribute(attribute.name);
@@ -257,7 +330,8 @@ function contentHtmlToXhtml(contentHtml: string): string {
     }
   });
   document.querySelectorAll("figure").forEach((figure) => {
-    if (!figure.textContent?.trim()) figure.remove();
+    if (!figure.querySelector("img") && figure.querySelector("figcaption")) figure.remove();
+    else if (!figure.textContent?.trim() && !figure.querySelector("img")) figure.remove();
   });
   const serializer = new XMLSerializer();
   return Array.from(document.body.childNodes)
@@ -283,6 +357,10 @@ function xhtmlDocument(title: string, body: string): string {
     .source { font-family: sans-serif; font-size: 0.75em; font-weight: bold; letter-spacing: 0.08em; text-transform: uppercase; }
     .summary { font-style: italic; }
     .original { border-top: 1px solid #777; margin-top: 2em; padding-top: 1em; }
+    figure { margin: 1.5em 0; page-break-inside: avoid; }
+    figcaption { color: #444; font-family: sans-serif; font-size: 0.8em; margin-top: 0.4em; text-align: center; }
+    .inline-image { display: block; height: auto; margin: 1.25em auto; max-width: 100%; page-break-inside: avoid; }
+    pre, table { max-width: 100%; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>${body}</body>
@@ -291,6 +369,10 @@ function xhtmlDocument(title: string, body: string): string {
 
 function articleNumber(index: number): string {
   return String(index + 1).padStart(2, "0");
+}
+
+function inlineImagePath(article: string, imageIndex: number): string {
+  return `images/article-${article}-inline-${String(imageIndex + 1).padStart(2, "0")}.jpg`;
 }
 
 function escapeXml(value: string): string {
