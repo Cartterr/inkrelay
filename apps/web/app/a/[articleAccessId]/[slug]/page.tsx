@@ -1,13 +1,33 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 
 import { publishedArticleByAccessId } from "@inkrelay/db";
 
-import { database } from "@/lib/runtime";
+import {
+  buildArticleMetadata,
+  buildArticleStructuredData,
+  type ArticleDiscoveryInput,
+} from "@/lib/article-metadata";
+import { database, runtimeConfig } from "@/lib/runtime";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { robots: { index: true, follow: true } };
+
+const getPublishedArticle = cache((articleAccessId: string) =>
+  publishedArticleByAccessId(database(), articleAccessId),
+);
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ articleAccessId: string; slug: string }>;
+}): Promise<Metadata> {
+  const { articleAccessId } = await params;
+  const record = await getPublishedArticle(articleAccessId);
+  if (!record) return {};
+  return buildArticleMetadata(discoveryInput(record), runtimeConfig().publicBaseUrl);
+}
 
 export default async function ArticlePage({
   params,
@@ -15,13 +35,24 @@ export default async function ArticlePage({
   params: Promise<{ articleAccessId: string; slug: string }>;
 }) {
   const { articleAccessId } = await params;
-  const record = await publishedArticleByAccessId(database(), articleAccessId);
+  const record = await getPublishedArticle(articleAccessId);
   if (!record?.article.contentHtml) notFound();
   const published = record.article.publishedAt ?? record.article.createdAt;
+  const structuredData = buildArticleStructuredData(
+    discoveryInput(record),
+    runtimeConfig().publicBaseUrl,
+  );
 
   return (
     <main className="reader-shell">
       <article className="reader-article">
+        <script
+          type="application/ld+json"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is serialized from trusted database fields and escapes tag delimiters.
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(structuredData).replace(/</gu, "\\u003c"),
+          }}
+        />
         {/* The opaque asset ID is independent from the article and feed access identifiers. */}
         <Image
           className="reader-cover"
@@ -59,4 +90,22 @@ export default async function ArticlePage({
       </article>
     </main>
   );
+}
+
+function discoveryInput(
+  record: NonNullable<Awaited<ReturnType<typeof publishedArticleByAccessId>>>,
+): ArticleDiscoveryInput {
+  const published = record.article.publishedAt ?? record.article.createdAt;
+  return {
+    articleAccessId: record.article.articleAccessId,
+    stableSlug: record.article.id,
+    assetAccessId: record.cover.assetAccessId,
+    title: record.article.title,
+    description:
+      record.article.summary ??
+      record.article.excerpt ??
+      `A curated technical article from ${record.source.name}.`,
+    sourceName: record.source.name,
+    publishedAt: published.toISOString(),
+  };
 }
