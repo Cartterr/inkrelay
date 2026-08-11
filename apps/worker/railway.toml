@@ -1,0 +1,8 @@
+[build]
+builder = "railpack"
+buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @inkrelay/core build && pnpm --filter @inkrelay/db build && pnpm --filter @inkrelay/rendering build && pnpm --filter @inkrelay/worker build"
+
+[deploy]
+preDeployCommand = ["pnpm --filter @inkrelay/db migrate"]
+startCommand = "pnpm --filter @inkrelay/worker start"
+restartPolicyType = "always"

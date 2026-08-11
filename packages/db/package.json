@@ -1,0 +1,37 @@
+{
+  "name": "@inkrelay/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./migration-path": {
+      "types": "./dist/migration-path.d.ts",
+      "development": "./src/migration-path.ts",
+      "import": "./dist/migration-path.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "biome lint src tests",
+    "migrate": "node dist/migrate.js",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@inkrelay/core": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.16.3",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.15.5"
+  }
+}
