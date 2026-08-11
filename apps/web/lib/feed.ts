@@ -46,3 +46,7 @@ export function slugify(value: string): string {
       .slice(0, 90) || "article"
   );
 }
+
+export function normalizeSourceSlug(value: string): string {
+  return value.endsWith(".xml") ? value.slice(0, -4) : value;
+}

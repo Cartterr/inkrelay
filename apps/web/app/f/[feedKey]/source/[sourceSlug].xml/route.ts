@@ -1,7 +1,7 @@
 import { renderSourceFeed, sourceBySlug } from "@inkrelay/core";
 import { isFeedKeyAccepted, publishedEntriesForSource } from "@inkrelay/db";
 
-import { toPublishedFeedEntries } from "@/lib/feed";
+import { normalizeSourceSlug, toPublishedFeedEntries } from "@/lib/feed";
 import { database, runtimeConfig } from "@/lib/runtime";
 
 export const dynamic = "force-dynamic";
@@ -16,15 +16,16 @@ export async function GET(
   if (!(await isFeedKeyAccepted(connection, feedKey, config.feedAccessKey))) {
     return new Response("Not found", { status: 404 });
   }
-  const source = sourceBySlug(sourceSlug);
+  const normalizedSourceSlug = normalizeSourceSlug(sourceSlug);
+  const source = sourceBySlug(normalizedSourceSlug);
   if (!source) return new Response("Not found", { status: 404 });
-  const rows = await publishedEntriesForSource(connection, sourceSlug);
+  const rows = await publishedEntriesForSource(connection, normalizedSourceSlug);
   const entries = toPublishedFeedEntries(rows, config.publicBaseUrl);
   const xml = renderSourceFeed({
     title: `${source.name} — InkRelay`,
     description: `Selected long-form reading from ${source.name}`,
     publicBaseUrl: config.publicBaseUrl,
-    feedPath: `/f/${feedKey}/source/${sourceSlug}.xml`,
+    feedPath: `/f/${feedKey}/source/${normalizedSourceSlug}.xml`,
     entries,
   });
   return new Response(xml, {
