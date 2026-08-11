@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
 
-test("keeps the editorial cover inside the extractable article body", async () => {
+test("keeps the editorial cover inside the content node KTool converts", async () => {
   const module = await import("../components/extractable-article-body").catch(() => ({
     ExtractableArticleBody: undefined,
   }));
@@ -16,13 +16,12 @@ test("keeps the editorial cover inside the extractable article body", async () =
       )
     : "";
 
-  const bodyPosition = markup.indexOf('class="reader-body"');
   const coverPosition = markup.indexOf('class="reader-cover"');
-  const contentPosition = markup.indexOf('class="reader-content"');
+  const articlePosition = markup.indexOf("Full technical article body.");
 
-  expect(bodyPosition).toBeGreaterThan(-1);
-  expect(coverPosition).toBeGreaterThan(bodyPosition);
-  expect(contentPosition).toBeGreaterThan(coverPosition);
-  expect(markup).toContain("Full technical article body.");
+  expect(markup).toMatch(
+    /<div class="reader-content"><img(?=[^>]*class="reader-cover")[^>]*><div class="reader-article-content">/u,
+  );
+  expect(articlePosition).toBeGreaterThan(coverPosition);
   expect(markup).toContain("Editorial cover for Rendering digital humans");
 });
