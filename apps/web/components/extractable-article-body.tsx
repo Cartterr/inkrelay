@@ -1,16 +1,16 @@
 export function ExtractableArticleBody({
   articleHtml,
-  assetAccessId,
+  coverUrl,
   title,
 }: {
   articleHtml: string;
-  assetAccessId: string;
+  coverUrl: string;
   title: string;
 }) {
   const coverLabel = `Editorial cover for ${title}`;
   const coverMarkup = [
     '<figure class="reader-cover-figure">',
-    `<img class="reader-cover" src="/assets/${encodeURIComponent(assetAccessId)}" alt="${escapeHtml(coverLabel)}" width="1200" height="1600">`,
+    `<img class="reader-cover" src="${escapeHtml(coverUrl)}" alt="${escapeHtml(coverLabel)}" width="1200" height="1600">`,
     `<figcaption class="reader-cover-caption">${escapeHtml(coverLabel)}</figcaption>`,
     "</figure>",
   ].join("");

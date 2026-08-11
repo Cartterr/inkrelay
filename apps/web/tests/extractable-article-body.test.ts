@@ -12,7 +12,7 @@ test("keeps the editorial cover inside the content node KTool converts", async (
     ? renderToStaticMarkup(
         createElement(module.ExtractableArticleBody, {
           articleHtml: "<p>Full technical article body.</p>",
-          assetAccessId: "opaque-cover",
+          coverUrl: "https://inkrelay.example/assets/opaque-cover",
           title: "Rendering digital humans",
         }),
       )
@@ -39,7 +39,7 @@ test("survives the Mozilla Readability pass KTool applies", async () => {
   const markup = renderToStaticMarkup(
     createElement(ExtractableArticleBody, {
       articleHtml,
-      assetAccessId: "opaque-cover",
+      coverUrl: "https://inkrelay.example/assets/opaque-cover",
       title: "Rendering digital humans",
     }),
   );
@@ -53,6 +53,8 @@ test("survives the Mozilla Readability pass KTool applies", async () => {
   const parsed = new Readability(dom.window.document).parse();
   const content = parsed?.content ?? "";
 
-  expect(content).toContain("/assets/opaque-cover");
-  expect(content.indexOf("/assets/opaque-cover")).toBeLessThan(content.indexOf(opening));
+  expect(content).toContain("https://inkrelay.example/assets/opaque-cover");
+  expect(content.indexOf("https://inkrelay.example/assets/opaque-cover")).toBeLessThan(
+    content.indexOf(opening),
+  );
 });

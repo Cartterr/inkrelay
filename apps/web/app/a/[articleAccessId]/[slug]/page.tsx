@@ -44,10 +44,12 @@ export default async function ArticlePage({
   const record = await getPublishedArticle(articleAccessId);
   if (!record?.article.contentHtml) notFound();
   const published = record.article.publishedAt ?? record.article.createdAt;
-  const structuredData = buildArticleStructuredData(
-    discoveryInput(record),
-    runtimeConfig().publicBaseUrl,
-  );
+  const publicBaseUrl = runtimeConfig().publicBaseUrl;
+  const structuredData = buildArticleStructuredData(discoveryInput(record), publicBaseUrl);
+  const coverUrl = new URL(
+    `/assets/${encodeURIComponent(record.cover.assetAccessId)}`,
+    `${publicBaseUrl.replace(/\/$/u, "")}/`,
+  ).toString();
 
   return (
     <main className="reader-shell">
@@ -72,7 +74,7 @@ export default async function ArticlePage({
         </header>
         <ExtractableArticleBody
           articleHtml={record.article.contentHtml}
-          assetAccessId={record.cover.assetAccessId}
+          coverUrl={coverUrl}
           title={record.article.title}
         />
         <footer className="reader-attribution">
