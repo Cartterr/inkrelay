@@ -15,6 +15,7 @@ async function metadataModule() {
     buildArticleMetadata: undefined,
     buildArticleStructuredData: undefined,
     publicAssetUrl: undefined,
+    publicInlineAssetUrl: undefined,
   }));
 }
 
@@ -24,6 +25,17 @@ describe("article discovery metadata", () => {
 
     expect(module.publicAssetUrl?.("opaque cover/+?", "https://reader.example/")).toBe(
       "https://reader.example/assets/opaque%20cover%2F%2B%3F",
+    );
+  });
+
+  test("gives the in-article cover a URL distinct from discovery metadata", async () => {
+    const module = await metadataModule();
+
+    expect(module.publicInlineAssetUrl?.("opaque-cover", "https://reader.example/")).toBe(
+      "https://reader.example/assets/opaque-cover?placement=article",
+    );
+    expect(module.publicInlineAssetUrl?.("opaque-cover", "https://reader.example/")).not.toBe(
+      module.publicAssetUrl?.("opaque-cover", "https://reader.example/"),
     );
   });
 

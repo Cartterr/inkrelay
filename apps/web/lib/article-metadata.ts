@@ -69,6 +69,12 @@ export function publicAssetUrl(assetAccessId: string, publicBaseUrl: string): st
   return publicUrl(publicBaseUrl, `/assets/${encodeURIComponent(assetAccessId)}`);
 }
 
+export function publicInlineAssetUrl(assetAccessId: string, publicBaseUrl: string): string {
+  const url = new URL(publicAssetUrl(assetAccessId, publicBaseUrl));
+  url.searchParams.set("placement", "article");
+  return url.toString();
+}
+
 function publicUrl(baseUrl: string, pathname: string): string {
   return new URL(pathname, `${baseUrl.replace(/\/$/u, "")}/`).toString();
 }
