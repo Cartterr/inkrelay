@@ -33,8 +33,8 @@ function makeEntries(count = 10): WeeklyEpubEntry[] {
 }
 
 describe("weekly EPUB", () => {
-  test("embeds a declared Kindle cover and exactly ten covered articles", () => {
-    const epub = renderWeeklyEpub({
+  test("embeds a declared Kindle cover and exactly ten covered articles", async () => {
+    const epub = await renderWeeklyEpub({
       editionId: "2026-W33",
       title: "InkRelay Weekly · 2026-W33",
       publishedAt: "2026-08-15T22:00:00.000Z",
@@ -75,47 +75,63 @@ describe("weekly EPUB", () => {
     ).toHaveLength(10);
   });
 
-  test("fails closed unless ten distinct sources have cover images", () => {
-    expect(() =>
+  test("fails closed unless ten distinct sources have valid cover images", async () => {
+    await expect(
       renderWeeklyEpub({
         editionId: "incomplete",
         title: "Incomplete",
         publishedAt: "2026-08-15T22:00:00.000Z",
         entries: makeEntries(9),
       }),
-    ).toThrow("exactly 10 entries");
+    ).rejects.toThrow("exactly 10 entries");
 
     const duplicates = makeEntries();
     duplicates[9] = { ...duplicates[9], sourceName: duplicates[0]?.sourceName ?? "" };
-    expect(() =>
+    await expect(
       renderWeeklyEpub({
         editionId: "duplicate",
         title: "Duplicate",
         publishedAt: "2026-08-15T22:00:00.000Z",
         entries: duplicates,
       }),
-    ).toThrow("10 distinct sources");
+    ).rejects.toThrow("10 distinct sources");
 
     const missingContent = makeEntries();
     missingContent[0] = { ...missingContent[0], contentHtml: "" };
-    expect(() =>
+    await expect(
       renderWeeklyEpub({
         editionId: "missing-content",
         title: "Missing content",
         publishedAt: "2026-08-15T22:00:00.000Z",
         entries: missingContent,
       }),
-    ).toThrow("requires article content");
+    ).rejects.toThrow("requires article content");
 
     const invalidCover = makeEntries();
     invalidCover[0] = { ...invalidCover[0], coverPng: onePixelPng };
-    expect(() =>
+    await expect(
       renderWeeklyEpub({
         editionId: "invalid-cover",
         title: "Invalid cover",
         publishedAt: "2026-08-15T22:00:00.000Z",
         entries: invalidCover,
       }),
-    ).toThrow("1200 by 1600 PNG");
+    ).rejects.toThrow("1200 by 1600 PNG");
+
+    const forgedHeader = Buffer.alloc(24);
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(forgedHeader);
+    forgedHeader.write("IHDR", 12, "ascii");
+    forgedHeader.writeUInt32BE(1_200, 16);
+    forgedHeader.writeUInt32BE(1_600, 20);
+    const corruptCover = makeEntries();
+    corruptCover[0] = { ...corruptCover[0], coverPng: forgedHeader };
+    await expect(
+      renderWeeklyEpub({
+        editionId: "corrupt-cover",
+        title: "Corrupt cover",
+        publishedAt: "2026-08-15T22:00:00.000Z",
+        entries: corruptCover,
+      }),
+    ).rejects.toThrow("valid 1200 by 1600 PNG");
   });
 });

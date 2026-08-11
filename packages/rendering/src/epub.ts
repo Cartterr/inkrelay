@@ -1,5 +1,6 @@
 import { strToU8, zipSync, type Zippable } from "fflate";
 import { JSDOM } from "jsdom";
+import sharp from "sharp";
 
 export interface WeeklyEpubEntry {
   articleId: string;
@@ -27,17 +28,21 @@ export class WeeklyEpubValidationError extends Error {
   override readonly name = "WeeklyEpubValidationError";
 }
 
-export function renderWeeklyEpub(input: WeeklyEpubInput): Buffer {
+export async function renderWeeklyEpub(input: WeeklyEpubInput): Promise<Buffer> {
   assertCompleteEdition(input.entries);
+  const normalizedInput = {
+    ...input,
+    entries: await normalizeCovers(input.entries),
+  };
   const files: Zippable = {};
   files.mimetype = [strToU8("application/epub+zip"), { level: 0, mtime: ZIP_EPOCH }];
   files["META-INF/container.xml"] = textFile(containerXml());
-  files["OEBPS/content.opf"] = textFile(contentOpf(input));
-  files["OEBPS/nav.xhtml"] = textFile(navXhtml(input));
-  files["OEBPS/toc.ncx"] = textFile(tocNcx(input));
-  files["OEBPS/cover.xhtml"] = textFile(coverXhtml(input.title));
+  files["OEBPS/content.opf"] = textFile(contentOpf(normalizedInput));
+  files["OEBPS/nav.xhtml"] = textFile(navXhtml(normalizedInput));
+  files["OEBPS/toc.ncx"] = textFile(tocNcx(normalizedInput));
+  files["OEBPS/cover.xhtml"] = textFile(coverXhtml(normalizedInput.title));
 
-  input.entries.forEach((entry, index) => {
+  normalizedInput.entries.forEach((entry, index) => {
     const number = articleNumber(index);
     files[`OEBPS/article-${number}.xhtml`] = textFile(articleXhtml(entry, number));
     files[`OEBPS/images/article-${number}-cover.png`] = binaryFile(entry.coverPng);
@@ -58,7 +63,6 @@ function assertCompleteEdition(entries: WeeklyEpubEntry[]): void {
   if (sources.size !== 10) {
     throw new WeeklyEpubValidationError("A weekly EPUB requires 10 distinct sources");
   }
-  for (const entry of entries) assertPngCover(entry.coverPng);
   if (entries.some((entry) => entry.contentHtml.trim().length === 0)) {
     throw new WeeklyEpubValidationError("Every weekly EPUB entry requires article content");
   }
@@ -71,14 +75,41 @@ function assertCompleteEdition(entries: WeeklyEpubEntry[]): void {
   }
 }
 
-function assertPngCover(cover: Buffer): void {
-  const isPng =
-    cover.length >= 24 &&
-    cover.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) &&
-    cover.subarray(12, 16).toString("ascii") === "IHDR";
-  if (!isPng || cover.readUInt32BE(16) !== 1_200 || cover.readUInt32BE(20) !== 1_600) {
-    throw new WeeklyEpubValidationError("Every weekly EPUB cover must be a 1200 by 1600 PNG");
+async function normalizeCovers(entries: WeeklyEpubEntry[]): Promise<WeeklyEpubEntry[]> {
+  const normalized: WeeklyEpubEntry[] = [];
+  for (const entry of entries) {
+    normalized.push({ ...entry, coverPng: await normalizePngCover(entry.coverPng) });
   }
+  return normalized;
+}
+
+async function normalizePngCover(cover: Buffer): Promise<Buffer> {
+  const hasPngSignature =
+    cover.length >= 24 &&
+    cover.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  if (!hasPngSignature) throw invalidCoverError();
+  try {
+    const { data, info } = await sharp(cover, {
+      failOn: "error",
+      limitInputPixels: 1_920_000,
+    })
+      .greyscale()
+      .removeAlpha()
+      .toColourspace("b-w")
+      .png({ compressionLevel: 9, adaptiveFiltering: true })
+      .toBuffer({ resolveWithObject: true });
+    if (info.width !== 1_200 || info.height !== 1_600 || info.format !== "png") {
+      throw invalidCoverError();
+    }
+    return data;
+  } catch (error) {
+    if (error instanceof WeeklyEpubValidationError) throw error;
+    throw invalidCoverError();
+  }
+}
+
+function invalidCoverError(): WeeklyEpubValidationError {
+  return new WeeklyEpubValidationError("Every weekly EPUB cover must be a valid 1200 by 1600 PNG");
 }
 
 function textFile(value: string): [Uint8Array, { level: 6; mtime: Date }] {

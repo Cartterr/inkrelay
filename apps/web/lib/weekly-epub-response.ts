@@ -25,7 +25,7 @@ export interface WeeklyEpubResponseDependencies {
   acceptFeedKey(feedKey: string): Promise<boolean>;
   loadEdition(): Promise<{ editionId: string | null; entries: WeeklyEpubSourceRow[] }>;
   loadAsset(storageKey: string): Promise<StoredEpubAsset | null>;
-  render?: (input: WeeklyEpubInput) => Buffer;
+  render?: (input: WeeklyEpubInput) => Buffer | Promise<Buffer>;
 }
 
 export async function createWeeklyEpubResponse(
@@ -63,7 +63,7 @@ export async function createWeeklyEpubResponse(
 
   const publishedAt = latest.entries[0]?.publishedAt?.toISOString() ?? new Date(0).toISOString();
   try {
-    const epub = (dependencies.render ?? renderWeeklyEpub)({
+    const epub = await (dependencies.render ?? renderWeeklyEpub)({
       editionId: latest.editionId,
       title: `InkRelay Weekly · ${latest.editionId}`,
       publishedAt,
