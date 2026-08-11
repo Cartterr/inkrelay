@@ -7,7 +7,7 @@ import { publishedArticleByAccessId } from "@inkrelay/db";
 import { database } from "@/lib/runtime";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { robots: { index: false, follow: false } };
+export const metadata: Metadata = { robots: { index: true, follow: true } };
 
 export default async function ArticlePage({
   params,
