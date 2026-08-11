@@ -534,6 +534,8 @@ export async function latestWeeklyEntries(connection: DatabaseConnection) {
       contentHtml: articles.contentHtml,
       originalUrl: articles.canonicalUrl,
       assetAccessId: covers.assetAccessId,
+      storageKey: covers.storageKey,
+      coverContentType: covers.contentType,
       publishedAt: weeklyEditions.publishedAt,
       coverCreatedAt: covers.createdAt,
       rank: weeklySelections.rank,

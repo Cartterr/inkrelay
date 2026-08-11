@@ -1,14 +1,19 @@
 # InkRelay
 
-InkRelay is a private RSS-to-Kindle enrichment system. It curates a fixed set of trusted technical feeds, produces high-contrast monochrome editorial covers, and exposes protected proxy feeds and readable article pages for KTool.
+InkRelay is a private reading pipeline for Kindle. It curates a fixed set of trusted technical feeds, produces high-contrast monochrome editorial covers, and publishes protected feeds, readable article pages, and a self-contained weekly EPUB for delivery through KTool.
 
 ## Product guarantees
 
 - Exactly 58 approved sources are registered.
 - Exactly 10 distinct-source articles are selected for each published weekly edition.
+- Each edition is available as a self-contained EPUB with a declared 1200×1600 Kindle cover.
 - Extracted pages are sanitized, attributed, non-indexed, and retained for 90 days.
 - Secrets belong in Railway or local environment variables, never in Git.
 - The service remains useful without an AI provider through deterministic scoring and cover fallbacks.
+
+## KTool delivery boundary
+
+KTool's RSS and URL converter is a supported text-first compatibility path, but it does not reliably preserve a leading article image as the Kindle book cover. InkRelay therefore makes the cover-guaranteed edition available at `GET /f/:feedKey/weekly.epub`. That EPUB embeds all ten 1200×1600 grayscale covers, declares the first one as the publication cover in both EPUB 2 and EPUB 3 metadata, and stays below KTool's 20 MB document-upload limit. Use KTool's document upload for the weekly edition; do not subscribe to both the weekly proxy feed and upload the weekly EPUB, because that would duplicate delivery.
 
 ## Repository layout
 
@@ -16,7 +21,7 @@ InkRelay is a private RSS-to-Kindle enrichment system. It curates a fixed set of
 - `apps/worker` — ingestion, extraction, evaluation, publishing, and scheduled jobs.
 - `packages/core` — source registry and domain behavior.
 - `packages/db` — PostgreSQL schema, migrations, repositories, and durable jobs.
-- `packages/rendering` — monochrome cover generation and asset storage contracts.
+- `packages/rendering` — monochrome cover generation, standards-compliant EPUBs, and asset storage.
 - `docs` — architecture, operations, security, and implementation plans.
 
 ## Local development
