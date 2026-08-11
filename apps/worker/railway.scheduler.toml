@@ -4,4 +4,5 @@ buildCommand = "pnpm install --frozen-lockfile && pnpm --filter @inkrelay/core b
 
 [deploy]
 startCommand = "pnpm --filter @inkrelay/worker schedule"
+cronSchedule = "*/15 * * * *"
 restartPolicyType = "never"
