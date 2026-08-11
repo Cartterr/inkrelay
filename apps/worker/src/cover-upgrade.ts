@@ -30,15 +30,21 @@ export async function enqueueLatestEditionCoverUpgrade(
   if (!editionId) return 0;
   const rows = await weeklyEntriesByEdition(connection, editionId);
   const articleIds = coverUpgradeArticleIds(rows);
+  return enqueueCoverUpgradeJobs(boss, articleIds);
+}
+
+export async function enqueueCoverUpgradeJobs(
+  boss: Pick<PgBoss, "send">,
+  articleIds: string[],
+): Promise<number> {
+  let enqueuedCount = 0;
   for (const articleId of articleIds) {
-    await boss.send(
+    const jobId = await boss.send(
       "generate-cover",
       { articleId, force: true },
-      {
-        ...DEFAULT_JOB_OPTIONS,
-        singletonKey: `cover-upgrade:${COVER_RENDERER_VERSION}:${articleId}`,
-      },
+      { ...DEFAULT_JOB_OPTIONS },
     );
+    if (jobId) enqueuedCount += 1;
   }
-  return articleIds.length;
+  return enqueuedCount;
 }
