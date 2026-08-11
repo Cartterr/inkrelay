@@ -36,7 +36,7 @@ describe("weekly EPUB", () => {
   test("embeds a declared Kindle cover and exactly ten covered articles", async () => {
     const epub = await renderWeeklyEpub({
       editionId: "2026-W33",
-      title: "InkRelay Weekly · 2026-W33",
+      title: "InkRelay Weekly - 2026-W33",
       publishedAt: "2026-08-15T22:00:00.000Z",
       entries: makeEntries(),
     });
@@ -59,6 +59,7 @@ describe("weekly EPUB", () => {
     expect(files["OEBPS/images/cover.png"]).toBeUndefined();
     expect(Buffer.from(files["OEBPS/images/article-01-cover.png"] ?? [])).toEqual(coverPng);
     expect(text("OEBPS/cover.xhtml")).toContain('src="images/article-01-cover.png"');
+    expect(text("OEBPS/cover.xhtml")).toContain("body { margin: 0; padding: 0;");
     expect(text("OEBPS/article-01.xhtml")).toContain('src="images/article-01-cover.png"');
     expect(text("OEBPS/article-01.xhtml")).toContain("Opening paragraph for article 1.");
     expect(text("OEBPS/article-01.xhtml")).toContain("<h2>Architecture</h2>");

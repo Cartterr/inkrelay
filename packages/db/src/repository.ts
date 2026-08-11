@@ -612,6 +612,7 @@ export async function weeklyEntriesByEdition(connection: DatabaseConnection, edi
       assetAccessId: covers.assetAccessId,
       storageKey: covers.storageKey,
       coverContentType: covers.contentType,
+      coverGenerationSource: covers.generationSource,
       publishedAt: weeklyEditions.publishedAt,
       coverCreatedAt: covers.createdAt,
       rank: weeklySelections.rank,

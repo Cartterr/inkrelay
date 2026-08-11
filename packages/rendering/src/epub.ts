@@ -200,10 +200,20 @@ ${points}
 }
 
 function coverXhtml(title: string): string {
-  return xhtmlDocument(
-    title,
-    `<section class="cover" epub:type="cover"><img src="images/article-01-cover.png" alt="${escapeXml(title)} cover"/></section>`,
-  );
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>${escapeXml(title)}</title>
+  <style>
+    body { margin: 0; padding: 0; text-align: center; }
+    section { margin: 0; padding: 0; }
+    img { display: block; width: 100%; height: auto; }
+  </style>
+</head>
+<body><section epub:type="cover"><img src="images/article-01-cover.png" alt="${escapeXml(title)} cover"/></section></body>
+</html>`;
 }
 
 function articleXhtml(entry: WeeklyEpubEntry, number: string): string {
